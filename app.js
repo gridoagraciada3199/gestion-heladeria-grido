@@ -855,9 +855,11 @@ function configurarNavegacion() {
     const navTabs = document.getElementById('navTabs');
     if (modoActual === 'empleado') {
         navTabs.innerHTML = `
-            <div class="nav-grupo">
-                <div class="nav-grupo-titulo">OPERACIÓN</div>
-                <div class="nav-grupo-botones">
+            <div class="nav-categoria abierto">
+                <button class="nav-categoria-titulo" type="button" onclick="toggleNavCategoria(this)">
+                    <span>🧑‍💼 OPERACIÓN</span><span class="nav-flecha">▼</span>
+                </button>
+                <div class="nav-categoria-contenido">
                     <button class="nav-btn active" data-tab="tareas">✅ Tareas</button>
                     <button class="nav-btn" data-tab="fichaje">🕐 Fichaje</button>
                     <button class="nav-btn" data-tab="consumo">🎁 Consumo</button>
@@ -865,16 +867,20 @@ function configurarNavegacion() {
                     <button class="nav-btn" data-tab="avisos">📢 Avisos</button>
                 </div>
             </div>
-            <div class="nav-grupo">
-                <div class="nav-grupo-titulo">STOCK Y CONTROL</div>
-                <div class="nav-grupo-botones">
+            <div class="nav-categoria">
+                <button class="nav-categoria-titulo" type="button" onclick="toggleNavCategoria(this)">
+                    <span>📦 STOCK Y CONTROL</span><span class="nav-flecha">▶</span>
+                </button>
+                <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="camara">🧊 Cámara</button>
                     <button class="nav-btn" data-tab="conteo">📦 Conteo</button>
                 </div>
             </div>
-            <div class="nav-grupo">
-                <div class="nav-grupo-titulo">CAJA</div>
-                <div class="nav-grupo-botones">
+            <div class="nav-categoria">
+                <button class="nav-categoria-titulo" type="button" onclick="toggleNavCategoria(this)">
+                    <span>💰 CAJA</span><span class="nav-flecha">▶</span>
+                </button>
+                <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
                     <button class="nav-btn" data-tab="caja">💰 Caja</button>
                 </div>
@@ -882,9 +888,11 @@ function configurarNavegacion() {
         `;
     } else {
         navTabs.innerHTML = `
-            <div class="nav-grupo">
-                <div class="nav-grupo-titulo">OPERACIÓN</div>
-                <div class="nav-grupo-botones">
+            <div class="nav-categoria abierto">
+                <button class="nav-categoria-titulo" type="button" onclick="toggleNavCategoria(this)">
+                    <span>🧑‍💼 OPERACIÓN</span><span class="nav-flecha">▼</span>
+                </button>
+                <div class="nav-categoria-contenido">
                     <button class="nav-btn active" data-tab="tareas">✅ Tareas</button>
                     <button class="nav-btn" data-tab="fichaje">🕐 Fichaje</button>
                     <button class="nav-btn" data-tab="consumo">🎁 Consumo</button>
@@ -892,18 +900,22 @@ function configurarNavegacion() {
                     <button class="nav-btn" data-tab="avisos">📢 Avisos</button>
                 </div>
             </div>
-            <div class="nav-grupo">
-                <div class="nav-grupo-titulo">STOCK Y CONTROL</div>
-                <div class="nav-grupo-botones">
+            <div class="nav-categoria">
+                <button class="nav-categoria-titulo" type="button" onclick="toggleNavCategoria(this)">
+                    <span>📦 STOCK Y CONTROL</span><span class="nav-flecha">▶</span>
+                </button>
+                <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="camara">🧊 Cámara</button>
                     <button class="nav-btn" data-tab="conteo">📦 Conteo</button>
                     <button class="nav-btn" data-tab="dashboard">📈 Stock</button>
                     <button class="nav-btn" data-tab="historial">📜 Historial</button>
                 </div>
             </div>
-            <div class="nav-grupo">
-                <div class="nav-grupo-titulo">CAJA Y ADMINISTRACIÓN</div>
-                <div class="nav-grupo-botones">
+            <div class="nav-categoria">
+                <button class="nav-categoria-titulo" type="button" onclick="toggleNavCategoria(this)">
+                    <span>💰 CAJA Y ADMINISTRACIÓN</span><span class="nav-flecha">▶</span>
+                </button>
+                <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
                     <button class="nav-btn" data-tab="caja">💰 Caja</button>
                     <button class="nav-btn" data-tab="gastos">💸 Gastos</button>
@@ -914,11 +926,19 @@ function configurarNavegacion() {
             </div>
         `;
     }
+
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', function() { cambiarTab(this.dataset.tab); });
     });
 }
 
+function toggleNavCategoria(boton) {
+    const categoria = boton.closest('.nav-categoria');
+    if (!categoria) return;
+    categoria.classList.toggle('abierto');
+    const flecha = boton.querySelector('.nav-flecha');
+    if (flecha) flecha.textContent = categoria.classList.contains('abierto') ? '▼' : '▶';
+}
 function actualizarFecha() {
     const fecha = new Date();
     const opciones = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
