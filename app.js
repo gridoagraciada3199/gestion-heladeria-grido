@@ -233,6 +233,7 @@ function iniciarListenersTiempoReal() {
             }
         });
         if (!snapshot.empty) ultimoAvisoConocido = snapshot.docs[0].id;
+        actualizarIndicadorAvisosUrgentes();
     });
     listenersActivos.push(unsubAvisos);
     
@@ -395,6 +396,7 @@ function iniciarSincronizacionEnVivo() {
         avisos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'avisos') cargarAvisos();
+        actualizarIndicadorAvisosUrgentes();
     });
     listenersEnVivo.push(unsubAvisos);
     
@@ -792,6 +794,7 @@ async function borrarTodoPrueba() {
             cargarCierresAdmin(); cargarCaja(); cargarGastos(); cargarFinanzas();
         }
         cargarTareas(); cargarCalendario(); cargarAvisos();
+    setTimeout(() => actualizarIndicadorAvisosUrgentes(), 300);
         cargarCamara(); cargarCierre(); cargarConteo();
         cargarFichaje(); cargarTurnos(); cargarConsumo();
     } catch (error) { console.error('Error:', error); alert('Error al borrar'); }
@@ -1714,6 +1717,59 @@ async function eliminarTurno(id) {
 }
 
 // ========== AVISOS ==========
+// 🔴 Avisos urgentes pendientes de lectura
+function obtenerAvisosUrgentesPendientes() {
+    if (modoActual !== 'empleado' || !empleadoActual) return [];
+    const hoy = new Date();
+    return avisos.filter(a => {
+        const activo = !a.vencimiento || new Date(a.vencimiento) >= hoy;
+        const urgente = a.prioridad === 'urgente';
+        const noLeido = !(a.vistos || []).includes(empleadoActual.id);
+        return activo && urgente && noLeido;
+    });
+}
+
+function actualizarIndicadorAvisosUrgentes() {
+    if (modoActual !== 'empleado' || !empleadoActual) return;
+    const pendientes = obtenerAvisosUrgentesPendientes();
+    let indicador = document.getElementById('indicadorAvisosUrgentes');
+    if (!indicador) {
+        indicador = document.createElement('div');
+        indicador.id = 'indicadorAvisosUrgentes';
+        indicador.style.cssText = 'position:fixed;right:16px;bottom:18px;z-index:9998;background:#ff4757;color:white;padding:12px 16px;border-radius:14px;font-weight:800;box-shadow:0 5px 18px rgba(0,0,0,.25);cursor:pointer;';
+        indicador.onclick = () => {
+            const botonAvisos = document.querySelector('.nav-btn[data-tab="avisos"]');
+            if (botonAvisos) botonAvisos.click();
+        };
+        document.body.appendChild(indicador);
+    }
+    if (pendientes.length > 0) {
+        indicador.innerHTML = '🚨 ' + pendientes.length + (pendientes.length === 1 ? ' AVISO URGENTE PENDIENTE' : ' AVISOS URGENTES PENDIENTES');
+        indicador.style.display = 'block';
+    } else {
+        indicador.style.display = 'none';
+    }
+}
+
+function formatearFechaAviso(fecha) {
+    if (!fecha) return 'Fecha pendiente';
+    if (fecha.toDate) return fecha.toDate().toLocaleDateString('es-UY');
+    if (fecha instanceof Date) return fecha.toLocaleDateString('es-UY');
+    return String(fecha);
+}
+
+function fechaAvisoParaOrdenar(fecha) {
+    if (!fecha) return 0;
+    if (fecha.toDate) return fecha.toDate().getTime();
+    if (fecha instanceof Date) return fecha.getTime();
+    const texto = String(fecha);
+    const partes = texto.split('/');
+    if (partes.length === 3) return new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0])).getTime();
+    const tiempo = Date.parse(texto);
+    return isNaN(tiempo) ? 0 : tiempo;
+}
+
+
 function cargarAvisos() {
     const lista = document.getElementById('listaAvisos');
     if (!lista) return;
@@ -1731,7 +1787,7 @@ function cargarAvisos() {
         const pa = prioridadOrden[a.prioridad] || 1;
         const pb = prioridadOrden[b.prioridad] || 1;
         if (pa !== pb) return pa - pb;
-        return new Date(b.fechaCreacion) - new Date(a.fechaCreacion);
+        return fechaAvisoParaOrdenar(b.fechaCreacion) - fechaAvisoParaOrdenar(a.fechaCreacion);
     });
     if (avisosFiltrados.length === 0) { lista.innerHTML = '<p class="info-box">No hay avisos</p>'; return; }
     let html = '';
@@ -1758,6 +1814,7 @@ function cargarAvisos() {
         html = avisosFiltrados.map(a => generarAvisoHTML(a, hoy)).join('');
     }
     lista.innerHTML = html;
+    actualizarIndicadorAvisosUrgentes();
 }
 
 function generarAvisoHTML(aviso, hoy) {
@@ -1781,7 +1838,7 @@ function generarAvisoHTML(aviso, hoy) {
                 <span class="aviso-badge prioridad-${aviso.prioridad}">${prioridadTexto}</span>
             </div>
             <div class="aviso-meta">
-                <span>📅 ${aviso.fechaCreacion}</span>
+                <span>📅 ${formatearFechaAviso(aviso.fechaCreacion)}</span>
                 ${aviso.vencimiento ? `<span>⏰ Vence: ${aviso.vencimiento}</span>` : ''}
                 <span>✍️ ${aviso.creador}</span>
             </div>
@@ -1818,7 +1875,7 @@ async function guardarAviso() {
         await db.collection('avisos').add({
             titulo, categoria, prioridad, contenido,
             vencimiento: vencimiento || null,
-            fechaCreacion: new Date().toLocaleDateString('es-ES'),
+            fechaCreacion: firebase.firestore.FieldValue.serverTimestamp(),
             creador: empleadoActual ? empleadoActual.nombre : 'Admin',
             vistos: []
         });
@@ -1841,6 +1898,7 @@ async function marcarAvisoLeido(avisoId) {
         }
         await cargarDatosIniciales();
         cargarAvisos();
+        actualizarIndicadorAvisosUrgentes();
     } catch (error) { console.error('Error:', error); }
 }
 async function eliminarAviso(avisoId) {
