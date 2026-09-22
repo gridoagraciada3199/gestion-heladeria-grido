@@ -1,0 +1,19 @@
+{
+  "name": "Gestión Grido",
+  "short_name": "Gestión Grido",
+  "description": "Sistema interno de gestión de la heladería",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#667eea",
+  "lang": "es-UY",
+  "icons": [
+    {
+      "src": "./icon-grido.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
