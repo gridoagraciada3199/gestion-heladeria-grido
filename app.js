@@ -729,7 +729,19 @@ function volverAlLogin() {
 function entrarEmpleado() {
     const empleadoId = document.getElementById('selectEmpleado').value;
     if (!empleadoId) { alert('Por favor selecciona tu nombre'); return; }
-    empleadoActual = empleados.find(e => e.id === empleadoId);
+    const empleado = empleados.find(e => e.id === empleadoId);
+    if (!empleado) { alert('Empleado no encontrado'); return; }
+
+    if (empleado.password) {
+        const passwordIngresada = prompt(`🔐 Contraseña de ${empleado.nombre}`);
+        if (passwordIngresada === null) return;
+        if (passwordIngresada !== empleado.password) {
+            alert('❌ Contraseña incorrecta');
+            return;
+        }
+    }
+
+    empleadoActual = empleado;
     modoActual = 'empleado';
     mostrarApp();
 }
@@ -3835,12 +3847,13 @@ async function eliminarProducto(id) {
     }
 }
 function mostrarFormularioEmpleado() { document.getElementById('formularioEmpleado').style.display = 'block'; }
-function ocultarFormularioEmpleado() { document.getElementById('formularioEmpleado').style.display = 'none'; document.getElementById('empNombre').value = ''; }
+function ocultarFormularioEmpleado() { document.getElementById('formularioEmpleado').style.display = 'none'; document.getElementById('empNombre').value = ''; document.getElementById('empPassword').value = ''; }
 async function guardarEmpleado() {
-    const nombre = document.getElementById('empNombre').value;
+    const nombre = document.getElementById('empNombre').value.trim();
+    const password = document.getElementById('empPassword').value;
     if (!nombre) { alert('Ingresa un nombre'); return; }
     try {
-        await db.collection('empleados').add({ nombre });
+        await db.collection('empleados').add({ nombre, password: password || '' });
         ocultarFormularioEmpleado();
         await cargarDatosIniciales();
         cargarListaEmpleados(); cargarSelectEmpleados();
