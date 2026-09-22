@@ -33,3 +33,47 @@ window.addEventListener("appinstalled", () => {
   deferredInstallPrompt = null;
   document.getElementById("btnInstalarApp")?.remove();
 });
+
+const FCM_VAPID_KEY = "PEGAR_AQUI_LA_CLAVE_VAPID_DE_FIREBASE";
+
+async function inicializarNotificacionesPush() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return null;
+  if (!window.firebase?.messaging) return null;
+  if (FCM_VAPID_KEY.startsWith("PEGAR_")) {
+    console.warn("Falta configurar la clave VAPID de Firebase.");
+    return null;
+  }
+
+  try {
+    const permiso = await Notification.requestPermission();
+    if (permiso !== "granted") return null;
+
+    const registration = await navigator.serviceWorker.ready;
+    const messaging = firebase.messaging();
+
+    const token = await messaging.getToken({
+      vapidKey: FCM_VAPID_KEY,
+      serviceWorkerRegistration: registration
+    });
+
+    if (!token) return null;
+
+    // El token queda disponible para que el sistema lo asocie al empleado.
+    window.fcmToken = token;
+    window.dispatchEvent(new CustomEvent("fcm-token-ready", { detail: { token } }));
+    console.log("FCM token listo.");
+    return token;
+  } catch (error) {
+    console.error("Error inicializando notificaciones push:", error);
+    return null;
+  }
+}
+
+window.addEventListener("fcm-token-ready", event => {
+  // Punto de integración: guardar event.detail.token en Firestore
+  // asociado al usuario/empleado que inició sesión.
+});
+
+window.addEventListener("load", () => {
+  setTimeout(() => inicializarNotificacionesPush(), 1500);
+});
