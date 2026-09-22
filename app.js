@@ -1813,7 +1813,7 @@ function construirResumenMensualFichaje(fichajesFiltrados) {
                 total: 0
             };
         }
-        porEmpleado[j.empleadoId].diurnas += calculo.diurnos;
+        porEmpleado[j.empleadoId].diurnas += calculo.diurnas;
         porEmpleado[j.empleadoId].nocturnas += calculo.nocturnos;
         porEmpleado[j.empleadoId].total += calculo.segundos;
     });
@@ -1822,6 +1822,11 @@ function construirResumenMensualFichaje(fichajesFiltrados) {
 }
 
 function cargarFichajeAdmin() {
+    const mesEl = document.getElementById('filtroFichajeMes');
+    if (mesEl && !mesEl.value) {
+        const ahora = new Date();
+        mesEl.value = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`;
+    }
     const contenedor = document.getElementById('fichajeHistorialContenido');
     if (!contenedor) return;
 
