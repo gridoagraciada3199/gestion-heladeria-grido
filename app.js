@@ -819,6 +819,8 @@ function mostrarApp() {
     configurarNavegacion();
     actualizarFecha();
     actualizarEstadoBotonNotif();
+    // Si FCM ya generó el token antes del ingreso, asociarlo ahora al usuario.
+    if (window.fcmToken) guardarTokenFCM(window.fcmToken);
     iniciarListenersTiempoReal();
     iniciarSincronizacionEnVivo();
     if (notificacionesActivas && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
