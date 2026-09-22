@@ -3913,3 +3913,32 @@ async function importarDatos() {
         location.reload();
     } catch (error) { console.error('Error:', error); alert('Error al importar'); }
 }
+
+// ========== FIREBASE CLOUD MESSAGING (FCM) ==========
+async function guardarTokenFCM(token) {
+    if (!token || !db) return;
+    
+    const esAdmin = modoActual === 'admin';
+    const empleadoId = esAdmin ? 'admin' : (empleadoActual ? empleadoActual.id : null);
+    const empleadoNombre = esAdmin ? 'Administrador' : (empleadoActual ? empleadoActual.nombre : null);
+    
+    if (!empleadoId) return;
+    
+    try {
+        await db.collection('tokensFCM').doc(token).set({
+            token: token,
+            empleadoId: empleadoId,
+            empleadoNombre: empleadoNombre,
+            modo: esAdmin ? 'admin' : 'empleado',
+            modoPrueba: modoPrueba,
+            actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        console.log('✅ Token FCM guardado para:', empleadoNombre);
+    } catch (error) {
+        console.error('❌ No se pudo guardar el token FCM:', error);
+    }
+}
+
+window.addEventListener('fcm-token-ready', event => {
+    guardarTokenFCM(event.detail?.token);
+});
