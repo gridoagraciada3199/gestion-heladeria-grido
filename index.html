@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Comercio</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div id="toastNotificacion" class="toast-notificacion"></div>
+    <div id="bannerNotificacion" class="banner-notificacion" style="display:none;">
+        <div class="banner-contenido">
+            <span id="bannerIcono">🔔</span>
+            <span id="bannerTexto"></span>
+            <button onclick="cerrarBanner()" style="background:none;border:none;color:white;font-size:20px;cursor:pointer;">✕</button>
+        </div>
+    </div>
+
+    <!-- Modal para ver foto del comprobante -->
+    <div id="modalFoto" class="modal-foto" style="display:none;" onclick="cerrarModalFoto()">
+        <span class="modal-cerrar">&times;</span>
+        <img id="modalFotoImg" src="" alt="Comprobante">
+    </div>
+
+    <div class="app-container">
+        <div id="pantallaLogin" class="pantalla-inicial">
+            <h1>📊 Gestión Comercio</h1>
+            <p>Selecciona tu modo de acceso</p>
+            <div class="botones-modo">
+                <button class="btn-modo btn-empleado" onclick="mostrarLoginEmpleado()">
+                    👤 Soy Empleado
+                    <small>Marcar tareas y contar stock</small>
+                </button>
+                <button class="btn-modo btn-admin" onclick="mostrarLoginAdmin()">
+                    🔐 Administrador
+                    <small>Acceso completo</small>
+                </button>
+                <button class="btn-modo btn-prueba" onclick="mostrarLoginPrueba()">
+                    🧪 Modo Prueba
+                    <small>Probar sin afectar datos reales</small>
+                </button>
+            </div>
+        </div>
+
+        <div id="pantallaLoginEmpleado" class="pantalla-inicial" style="display:none;">
+            <h1>👤 Ingreso de Empleado</h1>
+            <p>Selecciona tu nombre</p>
+            <select id="selectEmpleado" class="select-grande">
+                <option value="">-- Selecciona tu nombre --</option>
+            </select>
+            <button class="btn-primary btn-grande" onclick="entrarEmpleado()">Ingresar</button>
+            <button class="btn-secondary" onclick="volverAlLogin()">Volver</button>
+        </div>
+
+        <div id="pantallaLoginAdmin" class="pantalla-inicial" style="display:none;">
+            <h1>🔐 Ingreso de Administrador</h1>
+            <p>Ingresá tu contraseña</p>
+            <div class="password-container">
+                <input type="password" id="inputPasswordAdmin" class="input-password" placeholder="Contraseña" onkeypress="if(event.key==='Enter') ingresarAdmin()">
+                <button type="button" class="btn-toggle-password" onclick="toggleVerPassword()" title="Mostrar/Ocultar">
+                    <span id="iconoOjo">👁️</span>
+                </button>
+            </div>
+            <button class="btn-primary btn-grande" onclick="ingresarAdmin()">Ingresar</button>
+            <button class="btn-secondary" onclick="volverAlLogin()">Volver</button>
+        </div>
+
+        <div id="pantallaLoginPrueba" class="pantalla-inicial" style="display:none;">
+            <h1>🧪 Modo Prueba</h1>
+            <p>Selecciona cómo querés entrar</p>
+            <div class="botones-modo">
+                <button class="btn-modo btn-empleado" onclick="entrarPruebaEmpleado()">
+                    👤 Empleado de Prueba
+                    <small>Ver como empleado</small>
+                </button>
+                <button class="btn-modo btn-admin" onclick="mostrarLoginAdminPrueba()">
+                    🔐 Admin de Prueba
+                    <small>Requiere contraseña</small>
+                </button>
+                <button class="btn-secondary" onclick="volverAlLogin()">Volver</button>
+            </div>
+        </div>
+
+        <div id="pantallaPasswordPrueba" class="pantalla-inicial" style="display:none;">
+            <h1>🧪🔐 Admin de Prueba</h1>
+            <p>Ingresá la contraseña de administrador</p>
+            <div class="password-container">
+                <input type="password" id="inputPasswordPrueba" class="input-password" placeholder="Contraseña" onkeypress="if(event.key==='Enter') ingresarAdminPrueba()">
+                <button type="button" class="btn-toggle-password" onclick="toggleVerPasswordPrueba()" title="Mostrar/Ocultar">
+                    <span id="iconoOjoPrueba">👁️</span>
+                </button>
+            </div>
+            <button class="btn-primary btn-grande" onclick="ingresarAdminPrueba()">Ingresar</button>
+            <button class="btn-secondary" onclick="volverAlLoginPrueba()">Volver</button>
+        </div>
+
+        <div id="appPrincipal" style="display:none;">
+            <header class="header">
+                <h1>📊 Gestión Comercio</h1>
+                <div class="header-info">
+                    <span id="modoActual"></span>
+                    <span id="currentDate"></span>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button id="btnNotificaciones" class="btn-salir" onclick="toggleNotificaciones()" title="Activar/Desactivar notificaciones">
+                            🔔 <span id="estadoNotif">ON</span>
+                        </button>
+                        <button id="btnBorrarTodo" class="btn-salir" onclick="borrarTodoPrueba()" style="display:none; background: rgba(255,71,87,0.3);">🗑️ Borrar todo</button>
+                        <button class="btn-salir" onclick="salir()">Salir</button>
+                    </div>
+                </div>
+            </header>
+
+            <nav class="nav-tabs" id="navTabs"></nav>
+
+            <main class="main-content">
+                <section id="tareas" class="tab-content active">
+                    <h2>✅ Tareas del Día</h2>
+                    <div id="contenedorTareas"></div>
+                </section>
+
+                <section id="fichaje" class="tab-content">
+                    <h2>🕐 Fichaje - Entrada y Salida</h2>
+                    <div id="fichajeContenido"></div>
+                    <div id="fichajeAdmin" style="display:none;">
+                        <div class="seccion-colapsable" style="margin-top: 20px;">
+                            <div class="seccion-header" onclick="toggleSeccion('fichajeHistorial')">
+                                <h3>📊 Historial Completo (solo admin)</h3>
+                                <span class="toggle-icon" id="icon-fichajeHistorial">▶</span>
+                            </div>
+                            <div class="seccion-contenido" id="fichajeHistorial" style="display:none;">
+                                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                                    <select id="filtroFichajeEmpleado" onchange="cargarFichajeAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                        <option value="todos">Todos los empleados</option>
+                                    </select>
+                                    <input type="date" id="filtroFichajeFechaDesde" onchange="cargarFichajeAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                    <input type="date" id="filtroFichajeFechaHasta" onchange="cargarFichajeAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                </div>
+                                <div id="fichajeHistorialContenido"></div>
+                                <button class="btn-success" onclick="exportarFichajeExcel()" style="margin-top: 15px;">📊 Exportar a Excel</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========== 🎁 NUEVA SECCIÓN: CONSUMO DE EMPLEADOS ========== -->
+                <section id="consumo" class="tab-content">
+                    <h2>🎁 Consumo de Empleados</h2>
+                    <p class="info-box">Registrá los productos que te llevás de la heladería</p>
+                    
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('formConsumo')">
+                            <h3>📝 Registrar consumo</h3>
+                            <span class="toggle-icon" id="icon-formConsumo">▼</span>
+                        </div>
+                        <div class="seccion-contenido" id="formConsumo">
+                            <div class="form-container">
+                                <label style="font-weight: bold; display: block;">¿Qué te llevás?</label>
+<input type="text" id="consumoProducto" placeholder="Ej: Batido de chocolate, Cucurucho, etc." list="sugerenciasConsumo" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px;">
+<datalist id="sugerenciasConsumo">
+    <option value="Batido">
+    <option value="Cucurucho">
+    <option value="Copa">
+    <option value="Helado 1 bocha">
+    <option value="Helado 2 bochas">
+</datalist>
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Cantidad:</label>
+                                <input type="number" id="consumoCantidad" placeholder="1" min="0.01" step="0.01" value="1">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Monto total ($):</label>
+                                <input type="number" id="consumoMonto" placeholder="1500" min="0" step="0.01">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">📷 Foto del comprobante (opcional):</label>
+                                <input type="file" id="consumoFoto" accept="image/*" capture="environment" onchange="previsualizarFoto()">
+                                <div id="fotoPreview" style="margin-top: 10px;"></div>
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Nota (opcional):</label>
+                                <input type="text" id="consumoNota" placeholder="Ej: Me lo cobró Juan, etc.">
+                                <button class="btn-primary" onclick="guardarConsumo()" style="width: 100%; margin-top: 15px;">💾 Registrar consumo</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vista empleado: SOLO sus propios consumos -->
+                    <div id="consumoVistaEmpleado">
+                        <div class="seccion-colapsable" style="margin-top: 15px;">
+                            <div class="seccion-header" onclick="toggleSeccion('misConsumos')">
+                                <h3>📋 Mis consumos (privado)</h3>
+                                <span class="toggle-icon" id="icon-misConsumos">▶</span>
+                            </div>
+                            <div class="seccion-contenido" id="misConsumos" style="display:none;">
+                                <p class="info-box" style="background: #e8f5e9; border-left-color: #2ed573; color: #2e7d32;">
+                                    🔒 <strong>Privado:</strong> Solo vos podés ver tus propios consumos. Otras empleadas no pueden ver lo que registraste.
+                                </p>
+                                <div id="listaMisConsumos"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vista admin: TODOS los consumos -->
+                    <div id="consumoVistaAdmin" style="display:none;">
+                        <div class="seccion-colapsable" style="margin-top: 15px;">
+                            <div class="seccion-header" onclick="toggleSeccion('todosConsumos')">
+                                <h3>📊 Todos los consumos (admin)</h3>
+                                <span class="toggle-icon" id="icon-todosConsumos">▶</span>
+                            </div>
+                            <div class="seccion-contenido" id="todosConsumos" style="display:none;">
+                                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                                    <select id="filtroConsumoEmpleado" onchange="cargarConsumoAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                        <option value="todos">Todos los empleados</option>
+                                    </select>
+                                    <input type="date" id="filtroConsumoDesde" onchange="cargarConsumoAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                    <input type="date" id="filtroConsumoHasta" onchange="cargarConsumoAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                </div>
+                                <div id="resumenConsumoAdmin"></div>
+                                <div id="listaTodosConsumos"></div>
+                                <button class="btn-success" onclick="exportarConsumoExcel()" style="margin-top: 15px;">📊 Exportar a Excel</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="calendario" class="tab-content">
+                    <h2>📅 Calendario</h2>
+                    <div id="avisosCalendario"></div>
+                    <div id="botonCrearEvento" style="display:none; margin-bottom: 15px;">
+                        <button class="btn-primary" onclick="mostrarFormularioEvento()">+ Nuevo Evento</button>
+                    </div>
+                    <div class="filtros-eventos" style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <select id="filtroEventoTipo" onchange="cargarCalendario()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                            <option value="todos">📅 Todos los eventos</option>
+                            <option value="pedido">📦 Días de pedido</option>
+                            <option value="recepcion">🚚 Recepciones de pedido</option>
+                            <option value="conteo">🔢 Conteos de stock</option>
+                            <option value="otro">📌 Otros</option>
+                        </select>
+                        <select id="filtroEventoPeriodo" onchange="cargarCalendario()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                            <option value="proximos">🔜 Próximos (30 días)</option>
+                            <option value="semana">📆 Esta semana</option>
+                            <option value="mes">🗓️ Este mes</option>
+                            <option value="todos">📋 Todos (incluye pasados)</option>
+                        </select>
+                    </div>
+                    <div id="contenedorCalendario"></div>
+                    <div id="formularioEvento" class="form-container" style="display:none;">
+                        <h3>Nuevo Evento</h3>
+                        <input type="text" id="eventoTitulo" placeholder="Título del evento">
+                        <input type="date" id="eventoFecha">
+                        <select id="eventoTipo">
+                            <option value="pedido">📦 Día de pedido</option>
+                            <option value="recepcion">🚚 Recepción de pedido</option>
+                            <option value="conteo">🔢 Conteo de stock</option>
+                            <option value="otro">📌 Otro</option>
+                        </select>
+                        <textarea id="eventoDescripcion" placeholder="Descripción (opcional)"></textarea>
+                        <button class="btn-primary" onclick="guardarEvento()">Guardar</button>
+                        <button class="btn-secondary" onclick="ocultarFormularioEvento()">Cancelar</button>
+                    </div>
+                </section>
+
+                <section id="avisos" class="tab-content">
+                    <h2>📢 Avisos y Noticias</h2>
+                    <div id="botonCrearAviso" style="display:none; margin-bottom: 20px;">
+                        <button class="btn-primary" onclick="mostrarFormularioAviso()">+ Crear Nuevo Aviso</button>
+                    </div>
+                    <div class="filtros-avisos" style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <select id="filtroAvisoCategoria" onchange="cargarAvisos()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                            <option value="todas">📌 Todas las categorías</option>
+                            <option value="general">📌 General</option>
+                            <option value="promocion">🎉 Promoción</option>
+                            <option value="cambio">🔄 Cambio</option>
+                            <option value="urgente">⚠️ Urgente</option>
+                        </select>
+                        <select id="filtroAvisoPrioridad" onchange="cargarAvisos()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                            <option value="todas">🎯 Todas las prioridades</option>
+                            <option value="urgente">🔴 Urgente</option>
+                            <option value="normal">🔵 Normal</option>
+                            <option value="informativo">🟢 Informativo</option>
+                        </select>
+                        <select id="filtroAvisoEstado" onchange="cargarAvisos()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                            <option value="activos">🔔 Solo activos</option>
+                            <option value="vencidos">📜 Solo vencidos</option>
+                            <option value="todos">📋 Todos</option>
+                        </select>
+                    </div>
+                    <div id="listaAvisos"></div>
+                    <div id="formularioAviso" class="form-container" style="display:none;">
+                        <h3>📝 Nuevo Aviso</h3>
+                        <label style="font-weight: bold; display: block;">Título:</label>
+                        <input type="text" id="avisoTitulo" placeholder="Ej: Cambio de horario">
+                        <label style="font-weight: bold; display: block; margin-top: 10px;">Categoría:</label>
+                        <select id="avisoCategoria">
+                            <option value="general">📌 General</option>
+                            <option value="promocion">🎉 Promoción</option>
+                            <option value="cambio">🔄 Cambio</option>
+                            <option value="urgente">⚠️ Urgente</option>
+                        </select>
+                        <label style="font-weight: bold; display: block; margin-top: 10px;">Prioridad:</label>
+                        <select id="avisoPrioridad">
+                            <option value="urgente">🔴 Urgente</option>
+                            <option value="normal" selected>🔵 Normal</option>
+                            <option value="informativo">🟢 Informativo</option>
+                        </select>
+                        <label style="font-weight: bold; display: block; margin-top: 10px;">Contenido:</label>
+                        <textarea id="avisoContenido" placeholder="Escribí el contenido del aviso..." style="min-height: 100px;"></textarea>
+                        <label style="font-weight: bold; display: block; margin-top: 10px;">Fecha de vencimiento (opcional):</label>
+                        <input type="date" id="avisoVencimiento">
+                        <div style="margin-top: 15px;">
+                            <button class="btn-primary" onclick="guardarAviso()">💾 Publicar Aviso</button>
+                            <button class="btn-secondary" onclick="ocultarFormularioAviso()">Cancelar</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="camara" class="tab-content">
+                    <h2>🧊 Cámara de Frío</h2>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionPedidosCamara')">
+                            <h3>📋 Lista de Pedidos</h3>
+                            <span class="toggle-icon" id="icon-seccionPedidosCamara">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionPedidosCamara" style="display:none;">
+                            <button class="btn-primary" onclick="mostrarFormularioPedidoCamara()">+ Agregar a la lista</button>
+                            <div id="formularioPedidoCamara" class="form-container" style="display:none;">
+                                <label style="font-weight: bold; display: block;">🔍 Buscar producto:</label>
+                                <input type="text" id="buscadorPedidoCamara" placeholder="Escribí para filtrar..." oninput="filtrarProductosCamara('pedido')">
+                                <label style="font-weight: bold; margin-top: 10px; display: block;">Seleccionar producto:</label>
+                                <select id="pedidoCamaraProducto" size="6" style="height: auto;">
+                                    <option value="">-- Selecciona un producto --</option>
+                                </select>
+                                <input type="number" id="pedidoCamaraCantidad" placeholder="Cantidad" min="0" step="0.01">
+                                <input type="text" id="pedidoCamaraNota" placeholder="Nota (opcional)">
+                                <button class="btn-primary" onclick="guardarPedidoCamara()">Agregar</button>
+                                <button class="btn-secondary" onclick="ocultarFormularioPedidoCamara()">Cancelar</button>
+                            </div>
+                            <div id="listaPedidosCamara"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionMovimientosCamara')">
+                            <h3>📤📥 Registrar Movimiento</h3>
+                            <span class="toggle-icon" id="icon-seccionMovimientosCamara">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionMovimientosCamara" style="display:none;">
+                            <div class="form-container">
+                                <select id="movimientoTipo">
+                                    <option value="salida">📤 Sacar de la cámara</option>
+                                    <option value="entrada">📥 Meter a la cámara</option>
+                                </select>
+                                <label style="font-weight: bold; margin-top: 10px; display: block;">🔍 Buscar producto:</label>
+                                <input type="text" id="buscadorMovimiento" placeholder="Escribí para filtrar..." oninput="filtrarProductosCamara('movimiento')">
+                                <label style="font-weight: bold; margin-top: 10px; display: block;">Seleccionar producto:</label>
+                                <select id="movimientoProducto" size="6" style="height: auto;">
+                                    <option value="">-- Selecciona un producto --</option>
+                                </select>
+                                <input type="number" id="movimientoCantidad" placeholder="Cantidad" min="0" step="0.01">
+                                <input type="text" id="movimientoNota" placeholder="Nota (opcional)">
+                                <button class="btn-primary" onclick="guardarMovimientoCamara()">Registrar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="seccionStockCamara" class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('contenidoStockCamara')">
+                            <h3>📊 Stock en Cámara</h3>
+                            <span class="toggle-icon" id="icon-contenidoStockCamara">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="contenidoStockCamara" style="display:none;">
+                            <div id="listaStockCamara"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionHistorialCamara')">
+                            <h3>📜 Historial de Movimientos</h3>
+                            <span class="toggle-icon" id="icon-seccionHistorialCamara">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionHistorialCamara" style="display:none;">
+                            <div id="listaHistorialCamara"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="cierre" class="tab-content">
+                    <h2>🧾 Cierre de Turno (por empleado)</h2>
+                    <p class="info-box">Completá los datos al finalizar TU turno</p>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionNuevoCierre')">
+                            <h3>📝 Nuevo Cierre de Turno</h3>
+                            <span class="toggle-icon" id="icon-seccionNuevoCierre">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionNuevoCierre" style="display:none;">
+                            <div class="form-container">
+                                <label style="font-weight: bold; display: block;">🔢 Número de turno:</label>
+                                <input type="text" id="cierreNumero" placeholder="Ej: 1, 2, 3...">
+                                <h4 style="margin: 20px 0 10px 0; color: #667eea;">💰 Ventas del turno</h4>
+                                <label style="font-weight: bold; display: block;">Efectivo:</label>
+                                <input type="number" id="cierreEfectivo" placeholder="$" step="0.01" min="0" oninput="calcularTotalCierre()">
+                                <label style="font-weight: bold; display: block;">Tarjeta de Crédito:</label>
+                                <input type="number" id="cierreCredito" placeholder="$" step="0.01" min="0" oninput="calcularTotalCierre()">
+                                <label style="font-weight: bold; display: block;">Tarjeta de Débito:</label>
+                                <input type="number" id="cierreDebito" placeholder="$" step="0.01" min="0" oninput="calcularTotalCierre()">
+                                <div class="total-box">
+                                    <strong>💵 Total de ventas:</strong> <span id="cierreTotal">$0</span>
+                                </div>
+                                <div id="seccionControlCajaEmpleado">
+                                    <h4 style="margin: 20px 0 10px 0; color: #667eea;">📊 Control de caja</h4>
+                                    <label style="font-weight: bold; display: block;">Conteo de caja (efectivo físico):</label>
+                                    <input type="number" id="cierreConteo" placeholder="$" step="0.01" min="0" oninput="calcularDiferenciaCierre()">
+                                    <div class="total-box" id="cierreDiferenciaBox">
+                                        <strong>📊 Diferencia:</strong> <span id="cierreDiferencia">$0</span>
+                                    </div>
+                                </div>
+                                <h4 style="margin: 20px 0 10px 0; color: #667eea;">💸 Retiros de caja</h4>
+                                <div id="listaRetiros"></div>
+                                <button class="btn-secondary" onclick="agregarRetiro()" style="width: 100%; margin-top: 10px;">+ Agregar retiro</button>
+                                <h4 style="margin: 20px 0 10px 0; color: #667eea;">📝 Notas</h4>
+                                <textarea id="cierreNotas" placeholder="Observaciones (opcional)"></textarea>
+                                <button class="btn-primary" onclick="guardarCierre()" style="width: 100%; margin-top: 20px; padding: 15px; font-size: 18px;">💾 Guardar Cierre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionMisCierres')">
+                            <h3>📜 Mis Cierres Anteriores</h3>
+                            <span class="toggle-icon" id="icon-seccionMisCierres">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionMisCierres" style="display:none;">
+                            <div id="listaMisCierres"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="caja" class="tab-content">
+                    <h2>💰 Caja - Cierre del Día (consolidado)</h2>
+                    <p class="info-box">Resumen del día completo. Solo admin.</p>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionCajaInicial')">
+                            <h3>💵 Registrar Caja Inicial del Día</h3>
+                            <span class="toggle-icon" id="icon-seccionCajaInicial">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionCajaInicial" style="display:none;">
+                            <div class="form-container">
+                                <label style="font-weight: bold; display: block;">Monto inicial en caja:</label>
+                                <input type="number" id="cajaInicialMonto" placeholder="$" step="0.01" min="0">
+                                <label style="font-weight: bold; display: block;">Notas (opcional):</label>
+                                <input type="text" id="cajaInicialNotas" placeholder="Ej: Billetes de 100, cambio, etc.">
+                                <button class="btn-primary" onclick="guardarCajaInicial()" style="width: 100%; margin-top: 10px;">💾 Guardar Caja Inicial</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionCierreCaja')">
+                            <h3>🔒 Cierre de Caja del Día</h3>
+                            <span class="toggle-icon" id="icon-seccionCierreCaja">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionCierreCaja" style="display:none;">
+                            <div class="form-container">
+                                <p class="info-box">Al final del día, contá el efectivo físico y registrá el cierre</p>
+                                <label style="font-weight: bold; display: block;">Efectivo físico en caja:</label>
+                                <input type="number" id="cajaFinalEfectivo" placeholder="$" step="0.01" min="0" oninput="calcularCierreCaja()">
+                                <div id="resumenCierreCaja"></div>
+                                <label style="font-weight: bold; display: block; margin-top: 15px;">Motivo (si algo no cuadra):</label>
+                                <textarea id="cajaMotivoDiferencia" placeholder="Ej: Se pagó un gasto sin registrar..."></textarea>
+                                <button class="btn-primary" onclick="guardarCierreCaja()" style="width: 100%; margin-top: 10px;">🔒 Cerrar Caja del Día</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="seccionCajaAdmin">
+                        <div class="seccion-colapsable">
+                            <div class="seccion-header" onclick="toggleSeccion('seccionCajaHoy')">
+                                <h3>📊 Caja de Hoy (Resumen)</h3>
+                                <span class="toggle-icon" id="icon-seccionCajaHoy">▶</span>
+                            </div>
+                            <div class="seccion-contenido" id="seccionCajaHoy" style="display:none;">
+                                <div id="resumenCajaHoy"></div>
+                            </div>
+                        </div>
+                        <div class="seccion-colapsable">
+                            <div class="seccion-header" onclick="toggleSeccion('seccionHistorialCaja')">
+                                <h3>📜 Historial de Cajas</h3>
+                                <span class="toggle-icon" id="icon-seccionHistorialCaja">▶</span>
+                            </div>
+                            <div class="seccion-contenido" id="seccionHistorialCaja" style="display:none;">
+                                <div id="listaHistorialCaja"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="gastos" class="tab-content">
+                    <h2>💸 Gastos del Comercio</h2>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionNuevoGasto')">
+                            <h3>➕ Registrar Nuevo Gasto</h3>
+                            <span class="toggle-icon" id="icon-seccionNuevoGasto">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionNuevoGasto" style="display:none;">
+                            <div class="form-container">
+                                <label style="font-weight: bold; display: block;">Categoría:</label>
+                                <select id="gastoCategoria">
+                                    <option value="servicios">💡 Servicios</option>
+                                    <option value="alquiler">🏠 Alquiler</option>
+                                    <option value="proveedores">📦 Proveedores</option>
+                                    <option value="insumos">🧴 Insumos</option>
+                                    <option value="sueldos">💼 Sueldos</option>
+                                    <option value="impuestos">📄 Impuestos</option>
+                                    <option value="mantenimiento">🔧 Mantenimiento</option>
+                                    <option value="marketing">📢 Marketing</option>
+                                    <option value="otro">📌 Otro</option>
+                                </select>
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Fecha:</label>
+                                <input type="date" id="gastoFecha">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Monto:</label>
+                                <input type="number" id="gastoMonto" placeholder="$" step="0.01" min="0">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Descripción:</label>
+                                <input type="text" id="gastoDescripcion" placeholder="Ej: Factura luz">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Forma de pago:</label>
+                                <select id="gastoPago">
+                                    <option value="efectivo">💵 Efectivo</option>
+                                    <option value="transferencia">🏦 Transferencia</option>
+                                    <option value="tarjeta-credito">💳 Crédito</option>
+                                    <option value="tarjeta-debito">💳 Débito</option>
+                                    <option value="cheque">📄 Cheque</option>
+                                </select>
+                                <button class="btn-primary" onclick="guardarGasto()" style="width: 100%; margin-top: 15px;">💾 Guardar Gasto</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionListaGastos')">
+                            <h3>📜 Lista de Gastos</h3>
+                            <span class="toggle-icon" id="icon-seccionListaGastos">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionListaGastos" style="display:none;">
+                            <div class="filtros-gastos" style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                                <select id="filtroGastoMes" onchange="cargarListaGastos()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                    <option value="todos">Todos los meses</option>
+                                </select>
+                                <select id="filtroGastoCategoria" onchange="cargarListaGastos()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                    <option value="todas">Todas las categorías</option>
+                                    <option value="servicios">💡 Servicios</option>
+                                    <option value="alquiler">🏠 Alquiler</option>
+                                    <option value="proveedores">📦 Proveedores</option>
+                                    <option value="insumos">🧴 Insumos</option>
+                                    <option value="sueldos">💼 Sueldos</option>
+                                    <option value="impuestos">📄 Impuestos</option>
+                                    <option value="mantenimiento">🔧 Mantenimiento</option>
+                                    <option value="marketing">📢 Marketing</option>
+                                    <option value="otro">📌 Otro</option>
+                                </select>
+                            </div>
+                            <div id="listaGastos"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="conteo" class="tab-content">
+                    <h2>📦 Conteo de Stock</h2>
+                    <div class="guia-conteo">
+                        <h4 style="margin-bottom: 10px; color: #856404;">💡 ¿Cómo contar fracciones de caja?</h4>
+                        <div class="guia-conteo-grid">
+                            <div class="guia-item"><span class="guia-icono">🔒</span><span class="guia-texto">Cerrada = <strong>1</strong></span></div>
+                            <div class="guia-item"><span class="guia-icono">📦</span><span class="guia-texto">Abierta llena = <strong>1</strong></span></div>
+                            <div class="guia-item"><span class="guia-icono">📦¾</span><span class="guia-texto">3/4 = <strong>0.75</strong></span></div>
+                            <div class="guia-item"><span class="guia-icono">📦½</span><span class="guia-texto">Mitad = <strong>0.5</strong></span></div>
+                            <div class="guia-item"><span class="guia-icono">📦¼</span><span class="guia-texto">Poco = <strong>0.25</strong></span></div>
+                            <div class="guia-item"><span class="guia-icono">❌</span><span class="guia-texto">Vacía = <strong>0</strong></span></div>
+                        </div>
+                    </div>
+                    <div id="barraProgresoConteo" class="barra-progreso-conteo">
+                        <div class="progreso-info">
+                            <span id="progresoTexto">0 de 0 revisados</span>
+                            <span id="progresoPorcentaje">0%</span>
+                        </div>
+                        <div class="progreso-barra">
+                            <div id="progresoRelleno" class="progreso-relleno" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="search-box">
+                        <input type="text" id="buscarProductoConteo" placeholder="🔍 Buscar producto..." oninput="filtrarConteo()">
+                    </div>
+                    <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn-secondary" onclick="marcarTodosRevisados()" style="flex: 1; min-width: 150px;">✅ Marcar todos</button>
+                        <button class="btn-secondary" onclick="desmarcarTodos()" style="flex: 1; min-width: 150px;">🔄 Reiniciar</button>
+                    </div>
+                    <div id="contenedorConteo"></div>
+                    <div style="margin-top: 20px; position: sticky; bottom: 10px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                        <div id="avisoSinRevisar" class="aviso-sin-revisar" style="display:none; margin-bottom: 10px;"></div>
+                        <button class="btn-primary" onclick="guardarConteo()" style="width: 100%; padding: 15px; font-size: 18px;">💾 Guardar Conteo</button>
+                    </div>
+                </section>
+
+                <section id="dashboard" class="tab-content">
+                    <h2>📊 Dashboard</h2>
+                    <div class="search-box">
+                        <input type="text" id="buscarProductoDashboard" placeholder="🔍 Buscar producto..." oninput="filtrarDashboard()">
+                    </div>
+                    <div class="dashboard-grid">
+                        <div class="card"><h3>📦 Stock Actual</h3><div id="dashboardStock"></div></div>
+                        <div class="card"><h3>🛒 Vendido (diferencia)</h3><div id="dashboardVendido"></div></div>
+                        <div class="card"><h3>✅ Tareas de Hoy</h3><div id="dashboardTareas"></div></div>
+                    </div>
+                </section>
+
+                <section id="finanzas" class="tab-content">
+                    <h2>📊 Dashboard Financiero</h2>
+                    <div class="filtros-finanzas" style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <select id="filtroFinanzasPeriodo" onchange="cargarFinanzas()" style="flex: 1; padding: 10px; border-radius: 8px; border: 2px solid #ddd;">
+                            <option value="dia">📅 Hoy</option>
+                            <option value="semana">📆 Esta semana</option>
+                            <option value="mes" selected>🗓️ Este mes</option>
+                            <option value="personalizado">🔧 Personalizado</option>
+                        </select>
+                        <input type="date" id="filtroFechaInicio" style="flex: 1; padding: 10px; border-radius: 8px; border: 2px solid #ddd; display: none;">
+                        <input type="date" id="filtroFechaFin" style="flex: 1; padding: 10px; border-radius: 8px; border: 2px solid #ddd; display: none;">
+                        <button class="btn-primary" onclick="cargarFinanzas()" style="padding: 10px 20px;">🔄 Actualizar</button>
+                    </div>
+                    <div class="dashboard-grid">
+                        <div class="card" style="background: linear-gradient(135deg, #2ed573 0%, #1e9e54 100%);">
+                            <h3>💰 Ingresos Totales</h3>
+                            <p class="stat-number" id="finanzasIngresos">$0</p>
+                            <p class="stat-label" id="finanzasIngresosDetalle"></p>
+                        </div>
+                        <div class="card" style="background: linear-gradient(135deg, #ff4757 0%, #c44569 100%);">
+                            <h3>💸 Gastos Totales</h3>
+                            <p class="stat-number" id="finanzasGastos">$0</p>
+                            <p class="stat-label" id="finanzasGastosDetalle"></p>
+                        </div>
+                        <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <h3>📈 Ganancia Neta</h3>
+                            <p class="stat-number" id="finanzasGanancia">$0</p>
+                            <p class="stat-label" id="finanzasGananciaDetalle"></p>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable" style="margin-top: 20px;">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionDesgloseIngresos')">
+                            <h3>💵 Desglose de Ingresos</h3>
+                            <span class="toggle-icon" id="icon-seccionDesgloseIngresos">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionDesgloseIngresos" style="display:none;">
+                            <div id="desgloseIngresos"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionDesgloseGastos')">
+                            <h3>💸 Desglose de Gastos</h3>
+                            <span class="toggle-icon" id="icon-seccionDesgloseGastos">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionDesgloseGastos" style="display:none;">
+                            <div id="desgloseGastos"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionProductosRentables')">
+                            <h3>🏆 Productos Más Rentables</h3>
+                            <span class="toggle-icon" id="icon-seccionProductosRentables">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionProductosRentables" style="display:none;">
+                            <div id="productosRentables"></div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn-primary" onclick="exportarFinanzasPDF()">📄 Exportar PDF</button>
+                        <button class="btn-success" onclick="exportarFinanzasExcel()" style="background: #2ed573;">📊 Exportar Excel</button>
+                    </div>
+                </section>
+
+                <section id="cierresAdmin" class="tab-content">
+                    <h2>🧾 Historial de Cierres de Turno</h2>
+                    <p class="info-box">Todos los cierres de turno registrados</p>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('resumenCierres')">
+                            <h3>📊 Resumen General</h3>
+                            <span class="toggle-icon" id="icon-resumenCierres">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="resumenCierres" style="display:none;">
+                            <div id="dashboardCierres"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('listaCierresAdmin')">
+                            <h3>📜 Todos los Cierres</h3>
+                            <span class="toggle-icon" id="icon-listaCierresAdmin">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="listaCierresAdmin" style="display:none;">
+                            <div id="listaTodosCierres"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="historial" class="tab-content">
+                    <h2>📜 Historial</h2>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('historialConteos')">
+                            <h3>Últimos Conteos</h3>
+                            <span class="toggle-icon" id="icon-historialConteos">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="historialConteos" style="display:none;"></div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('historialTareas')">
+                            <h3>Registro de Tareas</h3>
+                            <span class="toggle-icon" id="icon-historialTareas">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="historialTareas" style="display:none;"></div>
+                    </div>
+                </section>
+
+                <section id="gestion" class="tab-content">
+                    <h2>⚙️ Gestión</h2>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionProductos')">
+                            <h3>📦 Productos</h3>
+                            <span class="toggle-icon" id="icon-seccionProductos">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionProductos" style="display:none;">
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                                <button class="btn-primary" onclick="mostrarFormularioProducto()">+ Agregar Producto</button>
+                                <button class="btn-success" onclick="document.getElementById('archivoExcel').click()">📥 Importar Excel</button>
+                                <button class="btn-secondary" onclick="descargarPlantillaExcel()">📄 Plantilla</button>
+                                <input type="file" id="archivoExcel" accept=".xlsx,.xls,.csv" style="display: none;" onchange="procesarExcel(event)">
+                            </div>
+                            <div id="vistaPreviaImportacion" class="form-container" style="display:none;">
+                                <h3>📋 Vista Previa</h3>
+                                <div id="tablaPrevia"></div>
+                                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                    <button class="btn-primary" onclick="confirmarImportacion()">✅ Cargar</button>
+                                    <button class="btn-secondary" onclick="cancelarImportacion()">Cancelar</button>
+                                </div>
+                            </div>
+                            <div id="formularioProducto" class="form-container" style="display:none;">
+                                <input type="hidden" id="prodIdEditar">
+                                <input type="text" id="prodNombre" placeholder="Nombre">
+                                <select id="prodCategoria">
+                                    <option value="helados">🍦 Helados</option>
+                                    <option value="congelados">❄️ Congelados</option>
+                                    <option value="insumos">📋 Insumos</option>
+                                    <option value="cafeteria">☕ Cafetería</option>
+                                    <option value="bebidas">🥤 Bebidas</option>
+                                    <option value="otros">📦 Otros</option>
+                                </select>
+                                <input type="number" id="prodCosto" placeholder="💰 Costo" step="0.01" min="0">
+                                <input type="number" id="prodPrecio" placeholder="💵 Precio" step="0.01" min="0">
+                                <input type="number" id="prodDescuento" placeholder="🏷️ Descuento" step="0.01" min="0">
+                                <button class="btn-primary" id="btnGuardarProducto" onclick="guardarProducto()">Guardar</button>
+                                <button class="btn-secondary" onclick="ocultarFormularioProducto()">Cancelar</button>
+                            </div>
+                            <div class="search-box">
+                                <input type="text" id="buscarProducto" placeholder="🔍 Buscar..." oninput="filtrarProductos()">
+                            </div>
+                            <div id="listaProductos"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionEmpleados')">
+                            <h3>👥 Empleados</h3>
+                            <span class="toggle-icon" id="icon-seccionEmpleados">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionEmpleados" style="display:none;">
+                            <button class="btn-primary" onclick="mostrarFormularioEmpleado()">+ Agregar Empleado</button>
+                            <div id="formularioEmpleado" class="form-container" style="display:none;">
+                                <input type="text" id="empNombre" placeholder="Nombre">
+                                <button class="btn-primary" onclick="guardarEmpleado()">Guardar</button>
+                                <button class="btn-secondary" onclick="ocultarFormularioEmpleado()">Cancelar</button>
+                            </div>
+                            <div class="search-box">
+                                <input type="text" id="buscarEmpleado" placeholder="🔍 Buscar..." oninput="filtrarEmpleados()">
+                            </div>
+                            <div id="listaEmpleados"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionTareas')">
+                            <h3>✅ Tareas</h3>
+                            <span class="toggle-icon" id="icon-seccionTareas">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionTareas" style="display:none;">
+                            <button class="btn-primary" onclick="mostrarFormularioTarea()">+ Agregar Tarea</button>
+                            <div id="formularioTarea" class="form-container" style="display:none;">
+                                <input type="text" id="tareaTitulo" placeholder="Título">
+                                <select id="tareaMomento">
+                                    <option value="apertura">🌅 Apertura</option>
+                                    <option value="durante">🔄 Durante</option>
+                                    <option value="cierre">🌙 Cierre</option>
+                                </select>
+                                <button class="btn-primary" onclick="guardarTarea()">Guardar</button>
+                                <button class="btn-secondary" onclick="ocultarFormularioTarea()">Cancelar</button>
+                            </div>
+                            <div class="search-box">
+                                <input type="text" id="buscarTarea" placeholder="🔍 Buscar..." oninput="filtrarTareas()">
+                            </div>
+                            <div id="listaTareas"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionPedidos')">
+                            <h3>📦 Cargar Pedido</h3>
+                            <span class="toggle-icon" id="icon-seccionPedidos">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionPedidos" style="display:none;">
+                            <button class="btn-primary" onclick="mostrarFormularioPedido()">+ Nuevo Pedido</button>
+                            <div id="formularioPedido" class="form-container" style="display:none;">
+                                <div id="productosPedido"></div>
+                                <button class="btn-primary" onclick="guardarPedido()">Guardar</button>
+                                <button class="btn-secondary" onclick="ocultarFormularioPedido()">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionTurnos')">
+                            <h3>⏰ Gestión de Turnos</h3>
+                            <span class="toggle-icon" id="icon-seccionTurnos">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionTurnos" style="display:none;">
+                            <p class="info-box">Configurá los turnos disponibles.</p>
+                            <button class="btn-primary" onclick="mostrarFormularioTurno()">+ Agregar Turno</button>
+                            <div id="formularioTurno" class="form-container" style="display:none;">
+                                <h3 id="tituloFormTurno">Nuevo Turno</h3>
+                                <input type="hidden" id="turnoIdEditar">
+                                <label style="font-weight: bold; display: block;">Nombre:</label>
+                                <input type="text" id="turnoNombre" placeholder="Ej: Turno Mañana">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Hora inicio:</label>
+                                <input type="time" id="turnoInicio">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Hora fin:</label>
+                                <input type="time" id="turnoFin">
+                                <label style="font-weight: bold; display: block; margin-top: 10px;">Días:</label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0;">
+                                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;"><input type="checkbox" class="turno-dia" value="1"> Lun</label>
+                                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;"><input type="checkbox" class="turno-dia" value="2"> Mar</label>
+                                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;"><input type="checkbox" class="turno-dia" value="3"> Mié</label>
+                                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;"><input type="checkbox" class="turno-dia" value="4"> Jue</label>
+                                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;"><input type="checkbox" class="turno-dia" value="5"> Vie</label>
+                                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;"><input type="checkbox" class="turno-dia" value="6"> Sáb</label>
+                                    <label style="display: flex; align-items: center; gap: 5px; font-weight: normal;"><input type="checkbox" class="turno-dia" value="0"> Dom</label>
+                                </div>
+                                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                    <button class="btn-primary" onclick="guardarTurno()">💾 Guardar</button>
+                                    <button class="btn-secondary" onclick="ocultarFormularioTurno()">Cancelar</button>
+                                </div>
+                            </div>
+                            <div id="listaTurnos"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionHistoriales')">
+                            <h3>🗂️ Gestión de Historiales</h3>
+                            <span class="toggle-icon" id="icon-seccionHistoriales">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionHistoriales" style="display:none;">
+                            <div id="estadoHistoriales"></div>
+                            <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn-primary" onclick="limpiarHistorialManual('historialConteos', 30)">🧹 Limpiar conteos</button>
+                                <button class="btn-primary" onclick="limpiarHistorialManual('camaraMovimientos', 30)">🧹 Limpiar mov. cámara</button>
+                                <button class="btn-primary" onclick="limpiarHistorialManual('cierres', 90)">🧹 Limpiar cierres</button>
+                                <button class="btn-primary" onclick="limpiarHistorialManual('cajas', 90)">🧹 Limpiar cajas</button>
+                                <button class="btn-primary" onclick="limpiarHistorialManual('consumos', 45)">🧹 Limpiar consumos</button>
+                                <button class="btn-danger" onclick="limpiarPedidosCamaraTraidos()">🗑️ Borrar pedidos traídos</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionBackup')">
+                            <h3>💾 Respaldo de Datos</h3>
+                            <span class="toggle-icon" id="icon-seccionBackup">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionBackup" style="display:none;">
+                            <button class="btn-primary" onclick="exportarDatos()" style="width: 100%; margin-bottom: 10px;">📥 Exportar Datos</button>
+                            <div class="form-container" style="text-align: center;">
+                                <h3>📤 Importar Datos</h3>
+                                <p style="color: #ff4757; font-weight: bold;">⚠️ Reemplazará TODOS los datos</p>
+                                <input type="file" id="archivoImportar" accept=".json" style="margin: 15px 0;">
+                                <button class="btn-danger" onclick="importarDatos()">Restaurar</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
