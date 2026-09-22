@@ -137,11 +137,24 @@
                             </div>
                             <div class="seccion-contenido" id="fichajeHistorial" style="display:none;">
                                 <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                                    <select id="filtroFichajeEmpleado" onchange="cargarFichajeAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
-                                        <option value="todos">Todos los empleados</option>
-                                    </select>
-                                    <input type="date" id="filtroFichajeFechaDesde" onchange="cargarFichajeAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
-                                    <input type="date" id="filtroFichajeFechaHasta" onchange="cargarFichajeAdmin()" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                                    <div style="flex: 1; min-width: 150px;">
+                                        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">📅 Mes</label>
+                                        <input type="month" id="filtroFichajeMes" onchange="cargarFichajeAdmin()" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;">
+                                    </div>
+                                    <div style="flex: 1; min-width: 150px;">
+                                        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">👤 Empleada</label>
+                                        <select id="filtroFichajeEmpleado" onchange="cargarFichajeAdmin()" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;">
+                                            <option value="todos">Todas las empleadas</option>
+                                        </select>
+                                    </div>
+                                    <div style="flex: 1; min-width: 150px;">
+                                        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Desde</label>
+                                        <input type="date" id="filtroFichajeFechaDesde" onchange="cargarFichajeAdmin()" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;">
+                                    </div>
+                                    <div style="flex: 1; min-width: 150px;">
+                                        <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;">Hasta</label>
+                                        <input type="date" id="filtroFichajeFechaHasta" onchange="cargarFichajeAdmin()" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;">
+                                    </div>
                                 </div>
                                 <div id="fichajeHistorialContenido"></div>
                                 <button class="btn-success" onclick="exportarFichajeExcel()" style="margin-top: 15px;">📊 Exportar a Excel</button>
