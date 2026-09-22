@@ -34,15 +34,13 @@ window.addEventListener("appinstalled", () => {
   document.getElementById("btnInstalarApp")?.remove();
 });
 
-const FCM_VAPID_KEY = "PEGAR_AQUI_LA_CLAVE_VAPID_DE_FIREBASE";
+// Clave pública VAPID de Firebase Cloud Messaging.
+// No es una contraseña ni una clave privada.
+const FCM_VAPID_KEY = "BD8xwfeFDttKMh6KaHlwmk-Cj5eiXEmjn_CxlCWrTapMlpV5x6h_0DIpw1DV9rVNGrT9itBh9T4fDLO5d45rFpo";
 
 async function inicializarNotificacionesPush() {
   if (!("Notification" in window) || !("serviceWorker" in navigator)) return null;
   if (!window.firebase?.messaging) return null;
-  if (FCM_VAPID_KEY.startsWith("PEGAR_")) {
-    console.warn("Falta configurar la clave VAPID de Firebase.");
-    return null;
-  }
 
   try {
     const permiso = await Notification.requestPermission();
@@ -58,7 +56,6 @@ async function inicializarNotificacionesPush() {
 
     if (!token) return null;
 
-    // El token queda disponible para que el sistema lo asocie al empleado.
     window.fcmToken = token;
     window.dispatchEvent(new CustomEvent("fcm-token-ready", { detail: { token } }));
     console.log("FCM token listo.");
