@@ -3850,14 +3850,64 @@ async function guardarEmpleado() {
         cargarListaEmpleados(); cargarSelectEmpleados();
     } catch (error) { console.error('Error:', error); }
 }
+function toggleVerPasswordEmpleado(idInput = 'empPassword', idIcono = 'iconoOjoEmpleado') {
+    const input = document.getElementById(idInput);
+    const icono = document.getElementById(idIcono);
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+    if (icono) icono.textContent = input.type === 'password' ? '👁️' : '🙈';
+}
 function cargarListaEmpleados() {
     const lista = document.getElementById('listaEmpleados');
     if (!lista) return;
     let html = '';
     empleados.forEach(emp => {
-        html += `<div class="list-item" data-nombre="${emp.nombre.toLowerCase()}"><h4>${emp.nombre}</h4><div class="actions"><button class="btn-danger" onclick="eliminarEmpleado('${emp.id}')">Eliminar</button></div></div>`;
+        const tienePassword = !!emp.password;
+        html += `<div class="list-item" data-nombre="${emp.nombre.toLowerCase()}">
+            <h4>${emp.nombre}</h4>
+            <p style="margin:5px 0;color:#666;">${tienePassword ? '🔐 Tiene contraseña' : '🔓 Sin contraseña'}</p>
+            <div class="actions">
+                <button class="btn-secondary" onclick="editarPasswordEmpleado('${emp.id}')">🔐 Contraseña</button>
+                <button class="btn-danger" onclick="eliminarPasswordEmpleado('${emp.id}')">🗑️ Quitar contraseña</button>
+                <button class="btn-danger" onclick="eliminarEmpleado('${emp.id}')">Eliminar empleado</button>
+            </div>
+        </div>`;
     });
     lista.innerHTML = html || '<p class="info-box">No hay empleados</p>';
+}
+async function editarPasswordEmpleado(id) {
+    const emp = empleados.find(e => e.id === id);
+    if (!emp) return;
+    const nueva = prompt(`🔐 Nueva contraseña para ${emp.nombre}\\n\\nDejá vacío si querés quitarla.`, emp.password || '');
+    if (nueva === null) return;
+    try {
+        await db.collection('empleados').doc(id).update({ password: nueva });
+        await cargarDatosIniciales();
+        cargarListaEmpleados();
+        cargarSelectEmpleados();
+        alert(nueva ? '✅ Contraseña actualizada' : '🔓 Contraseña eliminada');
+    } catch (error) {
+        console.error('Error:', error);
+        alert('No se pudo actualizar la contraseña');
+    }
+}
+async function eliminarPasswordEmpleado(id) {
+    const emp = empleados.find(e => e.id === id);
+    if (!emp || !emp.password) {
+        alert('Este empleado no tiene contraseña.');
+        return;
+    }
+    if (!confirm(`¿Querés quitar la contraseña de ${emp.nombre}?\\n\\nPodrá ingresar sin contraseña.`)) return;
+    try {
+        await db.collection('empleados').doc(id).update({ password: '' });
+        await cargarDatosIniciales();
+        cargarListaEmpleados();
+        cargarSelectEmpleados();
+        alert('🔓 Contraseña eliminada');
+    } catch (error) {
+        console.error('Error:', error);
+        alert('No se pudo eliminar la contraseña');
+    }
 }
 function filtrarEmpleados() {
     const busqueda = document.getElementById('buscarEmpleado').value.toLowerCase();
