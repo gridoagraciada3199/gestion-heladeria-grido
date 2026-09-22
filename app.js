@@ -1396,29 +1396,198 @@ function exportarConsumoExcel() {
 }
 
 // ========== 🕐 FICHAJE ==========
-async function cargarFichaje() {
+// El fichaje nuevo funciona como una jornada independiente.
+// Cada jornada tiene: INICIO TURNO -> INICIO DESCANSO -> FIN DESCANSO -> FIN TURNO.
+// Esto permite que varias empleadas marquen sus turnos al mismo tiempo y evita
+// emparejar una salida de una jornada con la entrada de otra.
+//
+// Para el desglose horario se toma como horario nocturno 22:00 a 06:00.
+// Es un criterio del sistema y se puede ajustar si el estudio contable usa otro.
+
+function obtenerFechaFichaje(valor) {
+    if (!valor) return null;
+    if (valor.toDate && typeof valor.toDate === 'function') return valor.toDate();
+    if (valor instanceof Date) return valor;
+    const fecha = new Date(valor);
+    return isNaN(fecha.getTime()) ? null : fecha;
+}
+
+function obtenerTimestampFichaje(f) {
+    return obtenerFechaFichaje(f && f.timestamp);
+}
+
+function obtenerFechaLocalFichaje(fecha) {
+    const d = obtenerFechaFichaje(fecha) || new Date();
+    return d.toLocaleDateString('es-ES');
+}
+
+function generarJornadaId() {
+    return `jornada_${empleadoActual.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function obtenerJornadasFichajes(registros) {
+    const porJornada = {};
+    const legacy = [];
+
+    registros.forEach(r => {
+        if (r.jornadaId) {
+            if (!porJornada[r.jornadaId]) porJornada[r.jornadaId] = [];
+            porJornada[r.jornadaId].push(r);
+        } else {
+            legacy.push(r);
+        }
+    });
+
+    const jornadas = Object.values(porJornada).map(regs => {
+        regs.sort((a,b) => (obtenerTimestampFichaje(a)?.getTime() || 0) - (obtenerTimestampFichaje(b)?.getTime() || 0));
+        const inicio = regs.find(r => r.accion === 'inicioTurno');
+        const fin = [...regs].reverse().find(r => r.accion === 'finTurno');
+        const descansos = [];
+        let inicioDescanso = null;
+
+        regs.forEach(r => {
+            if (r.accion === 'inicioDescanso') inicioDescanso = r;
+            if (r.accion === 'finDescanso' && inicioDescanso) {
+                descansos.push({ inicio: inicioDescanso, fin: r });
+                inicioDescanso = null;
+            }
+        });
+
+        return {
+            id: regs[0].jornadaId,
+            empleadoId: regs[0].empleadoId,
+            empleadoNombre: regs[0].empleadoNombre,
+            turnoNombre: regs[0].turnoNombre || inicio?.turnoNombre || '-',
+            turnoInicio: regs[0].turnoInicio || inicio?.turnoInicio || '',
+            turnoFin: regs[0].turnoFin || inicio?.turnoFin || '',
+            registros: regs,
+            inicio,
+            fin,
+            descansos
+        };
+    });
+
+    // Compatibilidad con los fichajes anteriores: entrada/salida.
+    const legacyOrdenados = legacy
+        .slice()
+        .sort((a,b) => (obtenerTimestampFichaje(a)?.getTime() || 0) - (obtenerTimestampFichaje(b)?.getTime() || 0));
+
+    const legacyPorEmpleado = {};
+    legacyOrdenados.forEach(r => {
+        const key = r.empleadoId || 'sin-empleado';
+        if (!legacyPorEmpleado[key]) legacyPorEmpleado[key] = [];
+        legacyPorEmpleado[key].push(r);
+    });
+
+    Object.values(legacyPorEmpleado).forEach(regs => {
+        let entrada = null;
+        regs.forEach(r => {
+            if (r.tipo === 'entrada') {
+                entrada = r;
+            } else if (r.tipo === 'salida' && entrada) {
+                jornadas.push({
+                    id: r.id ? `legacy_${r.id}` : `legacy_${Math.random()}`,
+                    empleadoId: entrada.empleadoId,
+                    empleadoNombre: entrada.empleadoNombre,
+                    turnoNombre: entrada.turnoNombre || '-',
+                    turnoInicio: entrada.turnoInicio || '',
+                    turnoFin: entrada.turnoFin || '',
+                    registros: [entrada, r],
+                    inicio: entrada,
+                    fin: r,
+                    descansos: []
+                });
+                entrada = null;
+            }
+        });
+    });
+
+    return jornadas;
+}
+
+function calcularIntervaloHorario(inicio, fin) {
+    if (!inicio || !fin) return { segundos: 0, diurnos: 0, nocturnos: 0 };
+    let a = obtenerTimestampFichaje(inicio);
+    let b = obtenerTimestampFichaje(fin);
+    if (!a || !b || b <= a) return { segundos: 0, diurnos: 0, nocturnos: 0 };
+
+    const inicioMs = a.getTime();
+    const finMs = b.getTime();
+    let nocturnos = 0;
+    let cursor = new Date(inicioMs);
+
+    while (cursor < b) {
+        const siguiente = new Date(cursor);
+        siguiente.setHours(cursor.getHours() + 1, 0, 0, 0);
+        const tramoFin = siguiente < b ? siguiente : b;
+        const hora = cursor.getHours();
+        const esNocturno = hora >= 22 || hora < 6;
+        const segundos = Math.max(0, (tramoFin.getTime() - cursor.getTime()) / 1000);
+        if (esNocturno) nocturnos += segundos;
+        cursor = tramoFin;
+    }
+
+    const segundos = Math.max(0, (finMs - inicioMs) / 1000);
+    return {
+        segundos,
+        nocturnos,
+        diurnos: Math.max(0, segundos - nocturnos)
+    };
+}
+
+function calcularJornada(jornada) {
+    if (!jornada.inicio) return { segundos: 0, diurnos: 0, nocturnos: 0, completa: false };
+    const fin = jornada.fin;
+    if (!fin) return { segundos: 0, diurnos: 0, nocturnos: 0, completa: false };
+
+    let total = calcularIntervaloHorario(jornada.inicio, fin);
+    jornada.descansos.forEach(d => {
+        if (d.inicio && d.fin) {
+            const descanso = calcularIntervaloHorario(d.inicio, d.fin);
+            total.segundos = Math.max(0, total.segundos - descanso.segundos);
+            total.diurnos = Math.max(0, total.diurnos - descanso.diurnos);
+            total.nocturnos = Math.max(0, total.nocturnos - descanso.nocturnos);
+        }
+    });
+    return { ...total, completa: true };
+}
+
+function obtenerJornadaActivaEmpleado(empleadoId) {
+    const jornadas = obtenerJornadasFichajes(fichajes.filter(f => f.empleadoId === empleadoId));
+    return jornadas
+        .filter(j => j.inicio && !j.fin)
+        .sort((a,b) => (obtenerTimestampFichaje(b.inicio)?.getTime() || 0) - (obtenerTimestampFichaje(a.inicio)?.getTime() || 0))[0] || null;
+}
+
+function formatearHorasSegundos(segundos) {
+    const totalMinutos = Math.max(0, Math.floor((segundos || 0) / 60));
+    return `${Math.floor(totalMinutos / 60)}h ${totalMinutos % 60}m`;
+}
+
+function cargarFichaje() {
     const contenedor = document.getElementById('fichajeContenido');
     if (!contenedor) return;
     if (!empleadoActual && modoActual !== 'admin') {
         contenedor.innerHTML = '<p class="info-box">Ingresá como empleado para fichar</p>';
         return;
     }
-    const turnosSnap = await db.collection('turnos').get();
-    turnos = turnosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const hoy = new Date().toLocaleDateString('es-ES');
-    const diaSemana = new Date().getDay();
+
+    const ahora = new Date();
+    const hoy = obtenerFechaLocalFichaje(ahora);
+    const diaSemana = ahora.getDay();
     const turnosHoy = turnos.filter(t => {
         if (!t.dias || t.dias.length === 0) return true;
         return t.dias.includes(diaSemana);
     });
+
     if (modoActual === 'admin') {
         const fichajesHoy = fichajes.filter(f => f.fecha === hoy);
         let html = `
             <div class="fichaje-card">
                 <h3>📊 Resumen del día - ${hoy}</h3>
                 <p style="margin: 10px 0;">Total de registros hoy: <strong>${fichajesHoy.length}</strong></p>
-                <p>Entradas: <strong>${fichajesHoy.filter(f => f.tipo === 'entrada').length}</strong></p>
-                <p>Salidas: <strong>${fichajesHoy.filter(f => f.tipo === 'salida').length}</strong></p>
+                <p>Inicios de turno: <strong>${fichajesHoy.filter(f => f.accion === 'inicioTurno' || f.tipo === 'entrada').length}</strong></p>
+                <p>Finalizaciones: <strong>${fichajesHoy.filter(f => f.accion === 'finTurno' || f.tipo === 'salida').length}</strong></p>
             </div>
             <div class="fichaje-card">
                 <h3>👥 Registros de HOY</h3>
@@ -1426,16 +1595,17 @@ async function cargarFichaje() {
         if (fichajesHoy.length === 0) {
             html += '<p class="info-box">No hay registros hoy</p>';
         } else {
-            html += `<table class="fichaje-tabla"><thead><tr><th>Empleado</th><th>Tipo</th><th>Hora</th><th>Turno</th></tr></thead><tbody>`;
-            const fichajesOrdenados = fichajesHoy.sort((a, b) => {
-                const ta = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)) : new Date(0);
-                const tb = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) : new Date(0);
-                return tb - ta;
-            });
-            fichajesOrdenados.forEach(f => {
-                const claseTipo = f.tipo === 'entrada' ? 'fichaje-entrada' : 'fichaje-salida';
-                const iconoTipo = f.tipo === 'entrada' ? '🟢' : '🔴';
-                html += `<tr><td><strong>${f.empleadoNombre}</strong></td><td class="${claseTipo}">${iconoTipo} ${f.tipo === 'entrada' ? 'ENTRADA' : 'SALIDA'}</td><td>${f.hora}</td><td>${f.turnoNombre || '-'}</td></tr>`;
+            html += `<table class="fichaje-tabla"><thead><tr><th>Empleado</th><th>Marca</th><th>Hora</th><th>Turno</th></tr></thead><tbody>`;
+            fichajesHoy.slice().sort((a,b) => (obtenerTimestampFichaje(b)?.getTime() || 0) - (obtenerTimestampFichaje(a)?.getTime() || 0)).forEach(f => {
+                const accion = f.accion || (f.tipo === 'entrada' ? 'inicioTurno' : 'finTurno');
+                const etiquetas = {
+                    inicioTurno: ['🟢', 'INICIO TURNO', 'fichaje-entrada'],
+                    inicioDescanso: ['🟡', 'INICIO DESCANSO', 'fichaje-descanso'],
+                    finDescanso: ['🔵', 'FIN DESCANSO', 'fichaje-descanso'],
+                    finTurno: ['🔴', 'FIN TURNO', 'fichaje-salida']
+                };
+                const [icono, texto, clase] = etiquetas[accion] || ['⚪', accion.toUpperCase(), ''];
+                html += `<tr><td><strong>${f.empleadoNombre}</strong></td><td class="${clase}">${icono} ${texto}</td><td>${f.hora}</td><td>${f.turnoNombre || '-'}</td></tr>`;
             });
             html += `</tbody></table>`;
         }
@@ -1444,36 +1614,58 @@ async function cargarFichaje() {
         cargarFiltrosFichajeAdmin();
         return;
     }
-    const fichajesHoyEmpleado = fichajes.filter(f => f.empleadoId === empleadoActual.id && f.fecha === hoy);
-    const ultimaEntrada = fichajesHoyEmpleado.filter(f => f.tipo === 'entrada').sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-    const ultimaSalida = fichajesHoyEmpleado.filter(f => f.tipo === 'salida').sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+
+    const empleadoId = empleadoActual.id;
+    const registrosEmpleado = fichajes.filter(f => f.empleadoId === empleadoId);
+    const jornadaActiva = obtenerJornadaActivaEmpleado(empleadoId);
+    const ultimaJornada = obtenerJornadasFichajes(registrosEmpleado)
+        .filter(j => j.inicio)
+        .sort((a,b) => (obtenerTimestampFichaje(b.inicio)?.getTime() || 0) - (obtenerTimestampFichaje(a.inicio)?.getTime() || 0))[0];
+
     let html = `<div class="fichaje-card">
         <div class="fichaje-saludo">👋 ¡Hola, ${empleadoActual.nombre}!</div>
-        <p style="margin: 10px 0; color: #666;">📅 ${hoy} - 🕐 ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</p>
-    `;
+        <p style="margin: 10px 0; color: #666;">📅 ${hoy} - 🕐 ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</p>`;
+
     if (turnosHoy.length === 0) {
         html += '<p class="info-box" style="background: #ffebee; border-left-color: #ff4757; color: #c62828;">No hay turnos configurados para hoy.</p>';
     } else {
-        html += `<label style="font-weight: bold; display: block; margin: 15px 0 10px 0;">Seleccioná tu turno:</label>`;
+        html += `<label style="font-weight: bold; display: block; margin: 15px 0 10px 0;">Seleccioná el turno que vas a realizar:</label>`;
         turnosHoy.forEach(t => {
             html += `<button class="btn-turno" id="btn-turno-${t.id}" onclick="seleccionarTurno('${t.id}')">
                 <span>${t.nombre}</span>
                 <span class="turno-horario-badge">${t.inicio} - ${t.fin}</span>
             </button>`;
         });
-        if (!ultimaEntrada) {
-            html += `<div class="fichaje-estado" id="estadoFichaje">⚪ Seleccioná un turno y marcá tu entrada</div>
-                <button class="btn-fichaje btn-entrada" id="btnFichajePrincipal" onclick="marcarFichaje('entrada')" disabled style="opacity: 0.5;">✅ MARCAR ENTRADA</button>`;
-        } else if (!ultimaSalida || new Date(ultimaSalida.timestamp) < new Date(ultimaEntrada.timestamp)) {
-            html += `<div class="fichaje-turno-info">🟢 Trabajando desde las ${ultimaEntrada.hora} (${ultimaEntrada.turnoNombre || ''})</div>
-                <button class="btn-fichaje btn-salida" onclick="marcarFichaje('salida')">🚪 MARCAR SALIDA</button>
-                <button class="btn-fichaje btn-entrada" onclick="marcarFichaje('entrada')" style="background: linear-gradient(135deg, #ffa502 0%, #ff6348 100%); font-size: 16px; margin-top: 5px;">🔄 MARCAR NUEVA ENTRADA</button>`;
+
+        if (!jornadaActiva) {
+            html += `<div class="fichaje-estado" id="estadoFichaje">⚪ Seleccioná un turno y comenzá tu jornada</div>
+                <button class="btn-fichaje btn-entrada" id="btnFichajePrincipal" onclick="marcarFichaje('inicioTurno')" disabled style="opacity: 0.5;">▶️ INICIAR TURNO</button>`;
         } else {
-            html += `<div class="fichaje-turno-info">✅ Jornada finalizada. Entrada: ${ultimaEntrada.hora} - Salida: ${ultimaSalida.hora}</div>
-                <button class="btn-fichaje btn-entrada" onclick="marcarFichaje('entrada')" style="background: linear-gradient(135deg, #ffa502 0%, #ff6348 100%);">🔄 MARCAR NUEVA ENTRADA</button>`;
+            const tieneDescansoActivo = jornadaActiva.registros.some(r => r.accion === 'inicioDescanso') &&
+                !jornadaActiva.registros.some(r => r.accion === 'finDescanso' &&
+                    (obtenerTimestampFichaje(r)?.getTime() || 0) > (obtenerTimestampFichaje(jornadaActiva.registros.find(x => x.accion === 'inicioDescanso'))?.getTime() || 0));
+
+            const inicioHora = jornadaActiva.inicio.hora;
+            html += `<div class="fichaje-turno-info">🟢 Turno iniciado a las <strong>${inicioHora}</strong> · ${jornadaActiva.turnoNombre || ''}</div>`;
+            if (tieneDescansoActivo) {
+                html += `<button class="btn-fichaje btn-descanso" onclick="marcarFichaje('finDescanso')">▶️ FINALIZAR DESCANSO</button>`;
+            } else {
+                html += `<button class="btn-fichaje btn-descanso" onclick="marcarFichaje('inicioDescanso')">☕ INICIAR DESCANSO</button>
+                    <button class="btn-fichaje btn-salida" onclick="marcarFichaje('finTurno')">⏹️ TERMINAR TURNO</button>`;
+            }
         }
     }
     html += `</div>`;
+
+    if (ultimaJornada && ultimaJornada.fin) {
+        const total = calcularJornada(ultimaJornada);
+        html += `<div class="fichaje-card">
+            <h3>📋 Último turno</h3>
+            <p>${ultimaJornada.inicio.hora} → ${ultimaJornada.fin.hora}</p>
+            <p><strong>Horas trabajadas:</strong> ${formatearHorasSegundos(total.segundos)}</p>
+        </div>`;
+    }
+
     contenedor.innerHTML = html;
 }
 
@@ -1485,192 +1677,250 @@ function seleccionarTurno(turnoId) {
     const btnFichaje = document.getElementById('btnFichajePrincipal');
     if (btnFichaje) { btnFichaje.disabled = false; btnFichaje.style.opacity = '1'; }
     const estado = document.getElementById('estadoFichaje');
-    if (estado) {
+    if (estado && turnoSeleccionado) {
         estado.innerHTML = `✅ Turno seleccionado: <strong>${turnoSeleccionado.nombre}</strong> (${turnoSeleccionado.inicio} - ${turnoSeleccionado.fin})`;
         estado.className = 'fichaje-turno-info';
     }
 }
 
-async function marcarFichaje(tipo) {
+async function marcarFichaje(accion) {
     if (!empleadoActual) { alert('Debés estar logueado'); return; }
+
     const ahora = new Date();
-    let turnoInfo = turnoSeleccionado;
-    if (tipo === 'salida' && !turnoInfo) {
-        const fichajesHoy = fichajes.filter(f => f.empleadoId === empleadoActual.id && f.fecha === ahora.toLocaleDateString('es-ES'));
-        const ultimaEntrada = fichajesHoy.filter(f => f.tipo === 'entrada').sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-        if (ultimaEntrada) turnoInfo = { id: ultimaEntrada.turno, nombre: ultimaEntrada.turnoNombre || 'Sin turno', inicio: '', fin: '' };
+    let jornada = obtenerJornadaActivaEmpleado(empleadoActual.id);
+
+    if (accion === 'inicioTurno') {
+        if (jornada) {
+            alert('⚠️ Ya tenés un turno iniciado. Primero terminá ese turno.');
+            return;
+        }
+        if (!turnoSeleccionado) {
+            alert('Seleccioná el turno primero.');
+            return;
+        }
+    } else if (!jornada) {
+        alert('No hay un turno activo para realizar esta marca.');
+        return;
     }
-    if (tipo === 'entrada' && !turnoInfo) { alert('Seleccioná un turno primero'); return; }
+
+    if (accion === 'inicioDescanso') {
+        const ultimoInicio = jornada.registros.filter(r => r.accion === 'inicioDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+        const ultimoFin = jornada.registros.filter(r => r.accion === 'finDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+        if (ultimoInicio && (!ultimoFin || obtenerTimestampFichaje(ultimoInicio) > obtenerTimestampFichaje(ultimoFin))) {
+            alert('⚠️ Ya tenés un descanso iniciado. Primero finalizalo.');
+            return;
+        }
+    }
+
+    if (accion === 'finDescanso') {
+        const ultimoInicio = jornada.registros.filter(r => r.accion === 'inicioDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+        const ultimoFin = jornada.registros.filter(r => r.accion === 'finDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+        if (!ultimoInicio || (ultimoFin && obtenerTimestampFichaje(ultimoFin) > obtenerTimestampFichaje(ultimoInicio))) {
+            alert('No hay un descanso activo para finalizar.');
+            return;
+        }
+    }
+
+    const jornadaId = accion === 'inicioTurno' ? generarJornadaId() : jornada.id;
+    const turnoInfo = accion === 'inicioTurno' ? turnoSeleccionado : {
+        id: jornada.inicio.turno || '',
+        nombre: jornada.turnoNombre || 'Sin turno',
+        inicio: jornada.turnoInicio || '',
+        fin: jornada.turnoFin || ''
+    };
+
     try {
         await db.collection('fichajes').add({
             empleadoId: empleadoActual.id,
             empleadoNombre: empleadoActual.nombre,
-            tipo: tipo,
+            accion,
+            tipo: accion === 'inicioTurno' ? 'entrada' : accion === 'finTurno' ? 'salida' : 'marca',
+            jornadaId,
             fecha: ahora.toLocaleDateString('es-ES'),
             hora: ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             timestamp: ahora,
-            turno: turnoInfo ? turnoInfo.id || '' : '',
-            turnoNombre: turnoInfo ? turnoInfo.nombre : 'Sin turno',
-            turnoInicio: turnoInfo ? turnoInfo.inicio || '' : '',
-            turnoFin: turnoInfo ? turnoInfo.fin || '' : ''
+            turno: turnoInfo?.id || '',
+            turnoNombre: turnoInfo?.nombre || 'Sin turno',
+            turnoInicio: turnoInfo?.inicio || '',
+            turnoFin: turnoInfo?.fin || ''
         });
-        const mensaje = tipo === 'entrada' 
-            ? `✅ Marcaste tu INICIO de jornada a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} (${turnoInfo.nombre})`
-            : `🚪 Marcaste tu FIN de jornada a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
-        mostrarToast(mensaje, tipo, 4000);
+
+        const mensajes = {
+            inicioTurno: `▶️ Turno iniciado a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
+            inicioDescanso: `☕ Descanso iniciado a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
+            finDescanso: `▶️ Descanso finalizado a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
+            finTurno: `⏹️ Turno terminado a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+        };
+        mostrarToast(mensajes[accion] || '✅ Marca registrada', accion === 'finTurno' ? 'salida' : 'entrada', 4000);
         await cargarDatosIniciales();
         cargarFichaje();
     } catch (error) {
         console.error('Error:', error);
-        alert('Error al marcar fichaje');
+        alert('Error al registrar la marca.');
     }
+}
+
+function obtenerRangoFichajeAdmin() {
+    const mes = document.getElementById('filtroFichajeMes')?.value;
+    let desde = document.getElementById('filtroFichajeFechaDesde')?.value;
+    let hasta = document.getElementById('filtroFichajeFechaHasta')?.value;
+
+    if (mes) {
+        desde = `${mes}-01`;
+        const [y,m] = mes.split('-').map(Number);
+        hasta = new Date(y, m, 0).toISOString().slice(0,10);
+    }
+    return { desde, hasta };
+}
+
+function filtrarFichajesPorRango(registros) {
+    const { desde, hasta } = obtenerRangoFichajeAdmin();
+    if (!desde && !hasta) return registros;
+
+    const desdeMs = desde ? new Date(`${desde}T00:00:00`).getTime() : -Infinity;
+    const hastaMs = hasta ? new Date(`${hasta}T23:59:59.999`).getTime() : Infinity;
+
+    return registros.filter(f => {
+        const d = obtenerTimestampFichaje(f);
+        const ms = d ? d.getTime() : 0;
+        return ms >= desdeMs && ms <= hastaMs;
+    });
 }
 
 function cargarFiltrosFichajeAdmin() {
     const select = document.getElementById('filtroFichajeEmpleado');
     if (!select) return;
+    const valorActual = select.value || 'todos';
     select.innerHTML = '<option value="todos">Todos los empleados</option>';
     empleados.forEach(emp => { select.innerHTML += `<option value="${emp.id}">${emp.nombre}</option>`; });
+    select.value = empleados.some(e => e.id === valorActual) ? valorActual : 'todos';
     cargarFichajeAdmin();
+}
+
+function construirResumenMensualFichaje(fichajesFiltrados) {
+    const jornadas = obtenerJornadasFichajes(fichajesFiltrados);
+    const porEmpleado = {};
+
+    jornadas.forEach(j => {
+        const calculo = calcularJornada(j);
+        if (!calculo.completa) return;
+        if (!porEmpleado[j.empleadoId]) {
+            porEmpleado[j.empleadoId] = {
+                empleadoId: j.empleadoId,
+                empleadoNombre: j.empleadoNombre,
+                diurnas: 0,
+                nocturnas: 0,
+                total: 0
+            };
+        }
+        porEmpleado[j.empleadoId].diurnas += calculo.diurnos;
+        porEmpleado[j.empleadoId].nocturnas += calculo.nocturnos;
+        porEmpleado[j.empleadoId].total += calculo.segundos;
+    });
+
+    return Object.values(porEmpleado).sort((a,b) => a.empleadoNombre.localeCompare(b.empleadoNombre));
 }
 
 function cargarFichajeAdmin() {
     const contenedor = document.getElementById('fichajeHistorialContenido');
     if (!contenedor) return;
-    const filtroEmpleado = document.getElementById('filtroFichajeEmpleado').value;
-    const filtroDesde = document.getElementById('filtroFichajeFechaDesde').value;
-    const filtroHasta = document.getElementById('filtroFichajeFechaHasta').value;
-    let fichajesFiltrados = fichajes;
+
+    const filtroEmpleado = document.getElementById('filtroFichajeEmpleado')?.value || 'todos';
+    let fichajesFiltrados = filtrarFichajesPorRango(fichajes);
     if (filtroEmpleado !== 'todos') fichajesFiltrados = fichajesFiltrados.filter(f => f.empleadoId === filtroEmpleado);
-    if (filtroDesde) {
-        const fechaDesde = new Date(filtroDesde);
-        fichajesFiltrados = fichajesFiltrados.filter(f => {
-            const partes = f.fecha.split('/');
-            const fechaFichaje = new Date(partes[2], partes[1] - 1, partes[0]);
-            return fechaFichaje >= fechaDesde;
-        });
-    }
-    if (filtroHasta) {
-        const fechaHasta = new Date(filtroHasta);
-        fichajesFiltrados = fichajesFiltrados.filter(f => {
-            const partes = f.fecha.split('/');
-            const fechaFichaje = new Date(partes[2], partes[1] - 1, partes[0]);
-            return fechaFichaje <= fechaHasta;
-        });
-    }
+
     if (fichajesFiltrados.length === 0) {
-        contenedor.innerHTML = '<p class="info-box">No hay registros</p>';
+        contenedor.innerHTML = '<p class="info-box">No hay registros para el período seleccionado.</p>';
         return;
     }
-    const agrupado = {};
-    fichajesFiltrados.forEach(f => {
-        const key = `${f.empleadoId}-${f.fecha}`;
-        if (!agrupado[key]) agrupado[key] = { empleadoId: f.empleadoId, empleadoNombre: f.empleadoNombre, fecha: f.fecha, registros: [] };
-        agrupado[key].registros.push(f);
+
+    const resumenMensual = construirResumenMensualFichaje(fichajesFiltrados);
+    let html = `
+        <div class="fichaje-resumen-mensual">
+            <h3>🧾 Resumen de horas del período</h3>
+            <p style="color:#666;margin-top:4px;">Las horas se calculan por jornada y se descuentan los descansos registrados.</p>
+            <div style="overflow-x:auto;">
+                <table class="fichaje-tabla">
+                    <thead><tr><th>Empleado</th><th>Diurnas</th><th>Nocturnas</th><th>Total</th></tr></thead>
+                    <tbody>`;
+
+    resumenMensual.forEach(d => {
+        html += `<tr>
+            <td><strong>${d.empleadoNombre}</strong></td>
+            <td>${formatearHorasSegundos(d.diurnas)}</td>
+            <td>${formatearHorasSegundos(d.nocturnas)}</td>
+            <td><strong>${formatearHorasSegundos(d.total)}</strong></td>
+        </tr>`;
     });
-    const resumen = Object.values(agrupado).map(dia => {
-        dia.registros.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        let totalSegundos = 0;
-        let entradaActual = null;
-        dia.registros.forEach(r => {
-            if (r.tipo === 'entrada') entradaActual = r;
-            else if (r.tipo === 'salida' && entradaActual) {
-                const tEntrada = new Date(entradaActual.timestamp);
-                const tSalida = new Date(r.timestamp);
-                totalSegundos += (tSalida - tEntrada) / 1000;
-                entradaActual = null;
-            }
-        });
-        const horas = Math.floor(totalSegundos / 3600);
-        const minutos = Math.floor((totalSegundos % 3600) / 60);
-        return { ...dia, totalSegundos, horasTrabajadas: `${horas}h ${minutos}m` };
+    html += `</tbody></table></div></div>`;
+
+    const jornadas = obtenerJornadasFichajes(fichajesFiltrados)
+        .filter(j => j.inicio)
+        .sort((a,b) => (obtenerTimestampFichaje(b.inicio)?.getTime() || 0) - (obtenerTimestampFichaje(a.inicio)?.getTime() || 0));
+
+    html += `<div class="fichaje-resumen-mensual" style="margin-top:15px;">
+        <h3>📋 Detalle de jornadas</h3>
+        <div style="overflow-x:auto;">
+        <table class="fichaje-tabla"><thead><tr><th>Empleado</th><th>Fecha</th><th>Turno</th><th>Marcas</th><th>Horas</th></tr></thead><tbody>`;
+
+    jornadas.forEach(j => {
+        const total = calcularJornada(j);
+        const marcas = j.registros.map(r => {
+            const iconos = {inicioTurno:'▶️', inicioDescanso:'☕', finDescanso:'▶️', finTurno:'⏹️'};
+            return `${iconos[r.accion] || '⚪'} ${r.hora}`;
+        }).join(' · ');
+        const fecha = j.inicio?.fecha || obtenerFechaLocalFichaje(j.inicio?.timestamp);
+        html += `<tr>
+            <td><strong>${j.empleadoNombre}</strong></td>
+            <td>${fecha}</td>
+            <td>${j.turnoNombre || '-'}</td>
+            <td style="font-size:12px;">${marcas}</td>
+            <td><strong>${total.completa ? formatearHorasSegundos(total.segundos) : '⏳ En curso'}</strong></td>
+        </tr>`;
     });
-    resumen.sort((a, b) => {
-        const [da, ma, ya] = a.fecha.split('/').map(Number);
-        const [db, mb, yb] = b.fecha.split('/').map(Number);
-        return new Date(yb, mb - 1, db) - new Date(ya, ma - 1, da);
-    });
-    let html = `<table class="fichaje-tabla"><thead><tr><th>Empleado</th><th>Fecha</th><th>Entradas/Salidas</th><th>Horas trabajadas</th></tr></thead><tbody>`;
-    resumen.forEach(dia => {
-        const detalles = dia.registros.map(r => {
-            const icono = r.tipo === 'entrada' ? '🟢' : '🔴';
-            return `${icono} ${r.hora} (${r.turnoNombre || '-'})`;
-        }).join(' | ');
-        html += `<tr><td><strong>${dia.empleadoNombre}</strong></td><td>${dia.fecha}</td><td style="font-size: 12px;">${detalles}</td><td><strong>${dia.horasTrabajadas}</strong></td></tr>`;
-    });
-    html += `</tbody></table>`;
-    const totalHoras = resumen.reduce((sum, d) => sum + d.totalSegundos, 0);
-    const hTotal = Math.floor(totalHoras / 3600);
-    const mTotal = Math.floor((totalHoras % 3600) / 60);
-    html += `<div class="total-box" style="margin-top: 15px;">
-        <p><strong>Total de horas:</strong> ${hTotal}h ${mTotal}m</p>
-        <p><strong>Registros:</strong> ${fichajesFiltrados.length}</p>
-    </div>`;
+    html += `</tbody></table></div></div>`;
     contenedor.innerHTML = html;
 }
 
 function exportarFichajeExcel() {
-    const filtroEmpleado = document.getElementById('filtroFichajeEmpleado').value;
-    const filtroDesde = document.getElementById('filtroFichajeFechaDesde').value;
-    const filtroHasta = document.getElementById('filtroFichajeFechaHasta').value;
-    let fichajesFiltrados = fichajes;
+    const filtroEmpleado = document.getElementById('filtroFichajeEmpleado')?.value || 'todos';
+    let fichajesFiltrados = filtrarFichajesPorRango(fichajes);
     if (filtroEmpleado !== 'todos') fichajesFiltrados = fichajesFiltrados.filter(f => f.empleadoId === filtroEmpleado);
-    if (filtroDesde) {
-        const fechaDesde = new Date(filtroDesde);
-        fichajesFiltrados = fichajesFiltrados.filter(f => {
-            const partes = f.fecha.split('/');
-            const fechaFichaje = new Date(partes[2], partes[1] - 1, partes[0]);
-            return fechaFichaje >= fechaDesde;
-        });
-    }
-    if (filtroHasta) {
-        const fechaHasta = new Date(filtroHasta);
-        fichajesFiltrados = fichajesFiltrados.filter(f => {
-            const partes = f.fecha.split('/');
-            const fechaFichaje = new Date(partes[2], partes[1] - 1, partes[0]);
-            return fechaFichaje <= fechaHasta;
-        });
-    }
-    const agrupado = {};
-    fichajesFiltrados.forEach(f => {
-        const key = `${f.empleadoId}-${f.fecha}`;
-        if (!agrupado[key]) agrupado[key] = { empleadoNombre: f.empleadoNombre, fecha: f.fecha, registros: [] };
-        agrupado[key].registros.push(f);
+
+    const jornadas = obtenerJornadasFichajes(fichajesFiltrados).filter(j => j.inicio);
+    const datos = [['Empleado', 'Fecha', 'Turno', 'Inicio', 'Fin', 'Horas Diurnas', 'Horas Nocturnas', 'Horas Totales']];
+
+    jornadas.sort((a,b) => (obtenerTimestampFichaje(a.inicio)?.getTime() || 0) - (obtenerTimestampFichaje(b.inicio)?.getTime() || 0));
+    jornadas.forEach(j => {
+        const total = calcularJornada(j);
+        const inicio = j.inicio?.hora || '';
+        const fin = j.fin?.hora || '';
+        datos.push([
+            j.empleadoNombre, j.inicio?.fecha || '', j.turnoNombre || '',
+            inicio, fin,
+            formatearHorasSegundos(total.diurnas),
+            formatearHorasSegundos(total.nocturnas),
+            formatearHorasSegundos(total.segundos)
+        ]);
     });
-    const datos = [['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas Trabajadas', 'Turno']];
-    Object.values(agrupado).forEach(dia => {
-        dia.registros.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        let totalSegundos = 0;
-        let entradaActual = null;
-        let primeraEntrada = '';
-        let ultimaSalida = '';
-        let turnos = [];
-        dia.registros.forEach(r => {
-            if (r.tipo === 'entrada') {
-                if (!primeraEntrada) primeraEntrada = r.hora;
-                entradaActual = r;
-                turnos.push(r.turnoNombre || '');
-            } else if (r.tipo === 'salida' && entradaActual) {
-                ultimaSalida = r.hora;
-                const tEntrada = new Date(entradaActual.timestamp);
-                const tSalida = new Date(r.timestamp);
-                totalSegundos += (tSalida - tEntrada) / 1000;
-                entradaActual = null;
-            }
-        });
-        const horas = Math.floor(totalSegundos / 3600);
-        const minutos = Math.floor((totalSegundos % 3600) / 60);
-        const horasStr = `${horas}:${minutos.toString().padStart(2, '0')}`;
-        const turnosUnicos = [...new Set(turnos)].join(', ');
-        datos.push([dia.empleadoNombre, dia.fecha, primeraEntrada, ultimaSalida, horasStr, turnosUnicos]);
-    });
+
+    const resumen = construirResumenMensualFichaje(fichajesFiltrados);
+    datos.push([]);
+    datos.push(['RESUMEN POR EMPLEADA', '', '', '', '', 'DIURNAS', 'NOCTURNAS', 'TOTAL']);
+    resumen.forEach(d => datos.push([
+        d.empleadoNombre, '', '', '', '',
+        formatearHorasSegundos(d.diurnas),
+        formatearHorasSegundos(d.nocturnas),
+        formatearHorasSegundos(d.total)
+    ]));
+
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(datos);
-    ws['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 30 }];
+    ws['!cols'] = [{wch:20},{wch:12},{wch:25},{wch:12},{wch:12},{wch:15},{wch:15},{wch:15}];
     XLSX.utils.book_append_sheet(wb, ws, 'Fichajes');
-    const fecha = new Date().toLocaleDateString('es-ES').replace(/\//g, '-');
+    const fecha = new Date().toLocaleDateString('es-ES').replace(/\\//g, '-');
     XLSX.writeFile(wb, `fichajes-${fecha}.xlsx`);
-    mostrarToast('✅ Excel exportado', 'entrada', 3000);
+    mostrarToast('✅ Excel de horas exportado', 'entrada', 3000);
 }
 
 // ========== ⏰ TURNOS ==========
