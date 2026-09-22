@@ -1669,15 +1669,6 @@ function cargarFichaje() {
     }
     html += `</div>`;
 
-    if (ultimaJornada && ultimaJornada.fin) {
-        const total = calcularJornada(ultimaJornada);
-        html += `<div class="fichaje-card">
-            <h3>📋 Último turno</h3>
-            <p>${ultimaJornada.inicio.hora} → ${ultimaJornada.fin.hora}</p>
-            <p><strong>Horas trabajadas:</strong> ${formatearHorasSegundos(total.segundos)}</p>
-        </div>`;
-    }
-
     contenedor.innerHTML = html;
 }
 
