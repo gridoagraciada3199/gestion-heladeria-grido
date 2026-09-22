@@ -436,7 +436,7 @@ function iniciarSincronizacionEnVivo() {
     console.log('✅ Sincronización en vivo activada');
 }
 
-const PASSWORD_ADMIN = "1234";
+const PASSWORD_ADMIN = "thor";
 
 const CATEGORIAS = {
     helados: '🍦 Helados', congelados: '❄️ Congelados', insumos: '📋 Insumos',
@@ -855,33 +855,63 @@ function configurarNavegacion() {
     const navTabs = document.getElementById('navTabs');
     if (modoActual === 'empleado') {
         navTabs.innerHTML = `
-            <button class="nav-btn active" data-tab="tareas">✅ Tareas</button>
-            <button class="nav-btn" data-tab="fichaje">🕐 Fichaje</button>
-            <button class="nav-btn" data-tab="consumo">🎁 Consumo</button>
-            <button class="nav-btn" data-tab="calendario">📅 Calendario</button>
-            <button class="nav-btn" data-tab="avisos">📢 Avisos</button>
-            <button class="nav-btn" data-tab="camara">🧊 Cámara</button>
-            <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
-            <button class="nav-btn" data-tab="caja">💰 Caja</button>
-            <button class="nav-btn" data-tab="conteo">📦 Conteo</button>
+            <div class="nav-grupo">
+                <div class="nav-grupo-titulo">OPERACIÓN</div>
+                <div class="nav-grupo-botones">
+                    <button class="nav-btn active" data-tab="tareas">✅ Tareas</button>
+                    <button class="nav-btn" data-tab="fichaje">🕐 Fichaje</button>
+                    <button class="nav-btn" data-tab="consumo">🎁 Consumo</button>
+                    <button class="nav-btn" data-tab="calendario">📅 Calendario</button>
+                    <button class="nav-btn" data-tab="avisos">📢 Avisos</button>
+                </div>
+            </div>
+            <div class="nav-grupo">
+                <div class="nav-grupo-titulo">STOCK Y CONTROL</div>
+                <div class="nav-grupo-botones">
+                    <button class="nav-btn" data-tab="camara">🧊 Cámara</button>
+                    <button class="nav-btn" data-tab="conteo">📦 Conteo</button>
+                </div>
+            </div>
+            <div class="nav-grupo">
+                <div class="nav-grupo-titulo">CAJA</div>
+                <div class="nav-grupo-botones">
+                    <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
+                    <button class="nav-btn" data-tab="caja">💰 Caja</button>
+                </div>
+            </div>
         `;
     } else {
         navTabs.innerHTML = `
-            <button class="nav-btn active" data-tab="tareas">✅ Tareas</button>
-            <button class="nav-btn" data-tab="fichaje">🕐 Fichaje</button>
-            <button class="nav-btn" data-tab="consumo">🎁 Consumo</button>
-            <button class="nav-btn" data-tab="calendario">📅 Calendario</button>
-            <button class="nav-btn" data-tab="avisos">📢 Avisos</button>
-            <button class="nav-btn" data-tab="camara">🧊 Cámara</button>
-            <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
-            <button class="nav-btn" data-tab="caja">💰 Caja</button>
-            <button class="nav-btn" data-tab="gastos">💸 Gastos</button>
-            <button class="nav-btn" data-tab="conteo">📦 Conteo</button>
-            <button class="nav-btn" data-tab="finanzas">📊 Finanzas</button>
-            <button class="nav-btn" data-tab="dashboard">📈 Stock</button>
-            <button class="nav-btn" data-tab="cierresAdmin">🧾 Cierres</button>
-            <button class="nav-btn" data-tab="historial">📜 Historial</button>
-            <button class="nav-btn" data-tab="gestion">⚙️ Gestión</button>
+            <div class="nav-grupo">
+                <div class="nav-grupo-titulo">OPERACIÓN</div>
+                <div class="nav-grupo-botones">
+                    <button class="nav-btn active" data-tab="tareas">✅ Tareas</button>
+                    <button class="nav-btn" data-tab="fichaje">🕐 Fichaje</button>
+                    <button class="nav-btn" data-tab="consumo">🎁 Consumo</button>
+                    <button class="nav-btn" data-tab="calendario">📅 Calendario</button>
+                    <button class="nav-btn" data-tab="avisos">📢 Avisos</button>
+                </div>
+            </div>
+            <div class="nav-grupo">
+                <div class="nav-grupo-titulo">STOCK Y CONTROL</div>
+                <div class="nav-grupo-botones">
+                    <button class="nav-btn" data-tab="camara">🧊 Cámara</button>
+                    <button class="nav-btn" data-tab="conteo">📦 Conteo</button>
+                    <button class="nav-btn" data-tab="dashboard">📈 Stock</button>
+                    <button class="nav-btn" data-tab="historial">📜 Historial</button>
+                </div>
+            </div>
+            <div class="nav-grupo">
+                <div class="nav-grupo-titulo">CAJA Y ADMINISTRACIÓN</div>
+                <div class="nav-grupo-botones">
+                    <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
+                    <button class="nav-btn" data-tab="caja">💰 Caja</button>
+                    <button class="nav-btn" data-tab="gastos">💸 Gastos</button>
+                    <button class="nav-btn" data-tab="finanzas">📊 Finanzas</button>
+                    <button class="nav-btn" data-tab="cierresAdmin">🧾 Cierres</button>
+                    <button class="nav-btn" data-tab="gestion">⚙️ Gestión</button>
+                </div>
+            </div>
         `;
     }
     document.querySelectorAll('.nav-btn').forEach(btn => {
