@@ -3486,9 +3486,9 @@ async function guardarConteo() {
     let productosNoRevisados = [];
 
     productos.forEach(prod => {
-        const input = document.getElementById(\`conteo-\${prod.id}\`);
-        const nota = document.getElementById(\`nota-\${prod.id}\`);
-        const checkbox = document.getElementById(\`check-\${prod.id}\`);
+        const input = document.getElementById(`conteo-${prod.id}`);
+        const nota = document.getElementById(`nota-${prod.id}`);
+        const checkbox = document.getElementById(`check-${prod.id}`);
         if (!input || !checkbox) return;
 
         const valor = input.value.trim();
@@ -3522,17 +3522,17 @@ async function guardarConteo() {
 
     if (productosSinRevisar > 0) {
         const confirmar = confirm(
-            \`⚠️ Hay \${productosSinRevisar} producto(s) sin revisar.\\n\\n\` +
-            \`\${productosNoRevisados.slice(0, 5).join('\\n')}\` +
-            \`\${productosNoRevisados.length > 5 ? '\\n...' : ''}\\n\\n\` +
-            \`Estos productos MANTENDRÁN su stock actual.\\n\\n¿Guardar igual?\`
+            `⚠️ Hay ${productosSinRevisar} producto(s) sin revisar.\\n\\n` +
+            `${productosNoRevisados.slice(0, 5).join('\\n')}` +
+            `${productosNoRevisados.length > 5 ? '\\n...' : ''}\\n\\n` +
+            `Estos productos MANTENDRÁN su stock actual.\\n\\n¿Guardar igual?`
         );
         if (!confirmar) return;
     }
 
     const notasCambiaron = JSON.stringify(notasActualizadas) !== JSON.stringify(notasConteo);
     if (productosModificados === 0 && !notasCambiaron) {
-        const confirmar = confirm(\`ℹ️ Revisaste \${productosRevisados} producto(s) pero no cambió el stock ni las notas.\\n\\n¿Guardar igual?\`);
+        const confirmar = confirm(`ℹ️ Revisaste ${productosRevisados} producto(s) pero no cambió el stock ni las notas.\\n\\n¿Guardar igual?`);
         if (!confirmar) return;
     }
 
@@ -3556,10 +3556,10 @@ async function guardarConteo() {
         await db.collection('config').doc('notasConteo').set({ data: notasConteo });
 
         let mensaje = '✅ Conteo guardado\n\n';
-        mensaje += \`📊 Revisados: \${productosRevisados}\n\`;
-        mensaje += \`✏️ Modificados: \${productosModificados}\n\`;
-        mensaje += \`⚠️ Sin revisar: \${productosSinRevisar}\n\`;
-        mensaje += \`📝 Notas permanentes activas: \${Object.keys(notasConteo).length}\`;
+        mensaje += `📊 Revisados: ${productosRevisados}\n`;
+        mensaje += `✏️ Modificados: ${productosModificados}\n`;
+        mensaje += `⚠️ Sin revisar: ${productosSinRevisar}\n`;
+        mensaje += `📝 Notas permanentes activas: ${Object.keys(notasConteo).length}`;
         alert(mensaje);
 
         await cargarDatosIniciales();
@@ -3571,7 +3571,7 @@ async function guardarConteo() {
 }
 
 function borrarNotaConteo(prodId) {
-    const input = document.getElementById(\`nota-\${prodId}\`);
+    const input = document.getElementById(`nota-${prodId}`);
     if (!input) return;
     if (!confirm('¿Borrar la nota permanente de este producto?')) return;
     input.value = '';
