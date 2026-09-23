@@ -304,6 +304,13 @@ function iniciarSincronizacionEnVivo() {
         if (tabActiva && tabActiva.id === 'camara') cargarStockCamara();
     });
     listenersEnVivo.push(unsubStockCamara);
+
+    const unsubNotasConteo = db.collection('config').doc('notasConteo').onSnapshot(doc => {
+        notasConteo = doc.exists ? (doc.data().data || {}) : {};
+        const tabActiva = document.querySelector('.tab-content.active');
+        if (tabActiva && tabActiva.id === 'conteo') cargarConteo();
+    });
+    listenersEnVivo.push(unsubNotasConteo);
     
     const unsubTareas = db.collection('tareas').onSnapshot(snapshot => {
         tareas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -465,6 +472,7 @@ let productos = [];
 let empleados = [];
 let stock = {};
 let stockCamara = {};
+let notasConteo = {};
 let tareas = [];
 let tareasCompletadas = {};
 let eventos = [];
@@ -512,6 +520,8 @@ async function cargarDatosIniciales() {
         stock = stockDoc.exists ? stockDoc.data().data : {};
         const stockCamaraDoc = await db.collection('config').doc('stockCamara').get();
         stockCamara = stockCamaraDoc.exists ? stockCamaraDoc.data().data : {};
+        const notasConteoDoc = await db.collection('config').doc('notasConteo').get();
+        notasConteo = notasConteoDoc.exists ? (notasConteoDoc.data().data || {}) : {};
         const tareasSnapshot = await db.collection('tareas').get();
         tareas = tareasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tareasCompDoc = await db.collection('config').doc('tareasCompletadas').get();
@@ -797,6 +807,7 @@ async function borrarTodoPrueba() {
         }
         await db.collection('config').doc('stock').set({ data: {} });
         await db.collection('config').doc('stockCamara').set({ data: {} });
+        await db.collection('config').doc('notasConteo').set({ data: {} });
         await db.collection('config').doc('tareasCompletadas').set({ data: {} });
         await db.collection('config').doc('ultimoDia').set({ fecha: '' });
         alert('✅ Datos borrados');
@@ -3337,7 +3348,11 @@ function cargarConteo() {
                         <div class="conteo-item-inputs">
                             <input type="number" class="conteo-input" id="conteo-${prod.id}" placeholder="${stockActual}" min="0" step="0.01"
                                    oninput="onCambioCantidad('${prod.id}', ${stockActual})">
-                            <input type="text" class="nota-conteo" id="nota-${prod.id}" placeholder="📝 Notas (ej: '1 cerrada + 1 abierta mitad')" maxlength="200">
+                            <div style="display:flex;gap:8px;align-items:center;width:100%;">
+                                <input type="text" class="nota-conteo" id="nota-${prod.id}" value="${String(notasConteo[prod.id] || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" placeholder="📝 Nota permanente (ej: 1 cerrada + 1 abierta mitad)" maxlength="200" style="flex:1;">
+                                <button type="button" class="btn-danger" onclick="borrarNotaConteo('${prod.id}')" title="Borrar nota" style="padding:8px 10px;">🗑️</button>
+                            </div>
+                            ${notasConteo[prod.id] ? `<p style="width:100%;margin:4px 0 0;color:#666;font-size:12px;">📌 Nota guardada: ${String(notasConteo[prod.id]).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>` : ''}
                         </div>
                     </div>
                 `;
@@ -3464,81 +3479,103 @@ function actualizarBarraProgreso() {
 
 async function guardarConteo() {
     const conteo = {};
-    const notas = {};
+    const notasActualizadas = { ...notasConteo };
     let productosModificados = 0;
     let productosRevisados = 0;
     let productosSinRevisar = 0;
-    let productosActualizados = [];
     let productosNoRevisados = [];
+
     productos.forEach(prod => {
-        const input = document.getElementById(`conteo-${prod.id}`);
-        const nota = document.getElementById(`nota-${prod.id}`);
-        const checkbox = document.getElementById(`check-${prod.id}`);
+        const input = document.getElementById(\`conteo-\${prod.id}\`);
+        const nota = document.getElementById(\`nota-\${prod.id}\`);
+        const checkbox = document.getElementById(\`check-\${prod.id}\`);
+        if (!input || !checkbox) return;
+
         const valor = input.value.trim();
-        const notaValor = nota.value.trim();
+        const notaValor = nota ? nota.value.trim() : '';
         const stockActual = stock[prod.id] || 0;
-        const revisado = checkbox && checkbox.checked;
+        const revisado = checkbox.checked;
+
         if (revisado) {
             productosRevisados++;
+
             if (valor !== '' && !isNaN(parseFloat(valor))) {
                 const nuevoValor = parseFloat(valor);
                 if (nuevoValor !== stockActual) {
                     conteo[prod.id] = nuevoValor;
                     productosModificados++;
-                    productosActualizados.push(`${prod.nombre}: ${stockActual} → ${nuevoValor}`);
                 }
             }
-            if (notaValor !== '') notas[prod.id] = notaValor;
+
+            if (notaValor !== '') notasActualizadas[prod.id] = notaValor;
+            else if (Object.prototype.hasOwnProperty.call(notasActualizadas, prod.id)) delete notasActualizadas[prod.id];
         } else {
             productosSinRevisar++;
             productosNoRevisados.push(prod.nombre);
         }
     });
+
     if (productosRevisados === 0) {
         alert('⚠️ No marcaste ningún producto como revisado.');
         return;
     }
+
     if (productosSinRevisar > 0) {
         const confirmar = confirm(
-            `⚠️ Hay ${productosSinRevisar} producto(s) sin revisar.\n\n` +
-            `${productosNoRevisados.slice(0, 5).join('\n')}` +
-            `${productosNoRevisados.length > 5 ? '\n...' : ''}\n\n` +
-            `Estos productos MANTENDRÁN su stock actual.\n\n¿Guardar igual?`
+            \`⚠️ Hay \${productosSinRevisar} producto(s) sin revisar.\\n\\n\` +
+            \`\${productosNoRevisados.slice(0, 5).join('\\n')}\` +
+            \`\${productosNoRevisados.length > 5 ? '\\n...' : ''}\\n\\n\` +
+            \`Estos productos MANTENDRÁN su stock actual.\\n\\n¿Guardar igual?\`
         );
         if (!confirmar) return;
     }
-    if (productosModificados === 0) {
-        const confirmar = confirm(`ℹ️ Revisaste ${productosRevisados} producto(s) pero ninguno cambió.\n\n¿Guardar igual?`);
+
+    const notasCambiaron = JSON.stringify(notasActualizadas) !== JSON.stringify(notasConteo);
+    if (productosModificados === 0 && !notasCambiaron) {
+        const confirmar = confirm(\`ℹ️ Revisaste \${productosRevisados} producto(s) pero no cambió el stock ni las notas.\\n\\n¿Guardar igual?\`);
         if (!confirmar) return;
     }
+
     try {
         await db.collection('historialConteos').add({
             fecha: new Date().toLocaleString('es-ES'),
             timestamp: new Date(),
             empleado: empleadoActual ? empleadoActual.nombre : 'Admin',
             conteo: conteo,
-            notas: notas,
+            notas: Object.fromEntries(Object.keys(notasActualizadas).map(id => [id, notasActualizadas[id]])),
             parcial: true,
-            productosRevisados: productosRevisados,
-            productosModificados: productosModificados,
-            productosSinRevisar: productosSinRevisar
+            productosRevisados,
+            productosModificados,
+            productosSinRevisar
         });
+
         Object.keys(conteo).forEach(prodId => { stock[prodId] = conteo[prodId]; });
+        notasConteo = notasActualizadas;
+
         await db.collection('config').doc('stock').set({ data: stock });
-        let mensaje = `✅ Conteo guardado\n\n`;
-        mensaje += `📊 Revisados: ${productosRevisados}\n`;
-        mensaje += `✏️ Modificados: ${productosModificados}\n`;
-        mensaje += `⚠️ Sin revisar: ${productosSinRevisar}`;
-        if (Object.keys(notas).length > 0) {
-            mensaje += `\n\n📝 Notas guardadas: ${Object.keys(notas).length}`;
-        }
+        await db.collection('config').doc('notasConteo').set({ data: notasConteo });
+
+        let mensaje = '✅ Conteo guardado\n\n';
+        mensaje += \`📊 Revisados: \${productosRevisados}\n\`;
+        mensaje += \`✏️ Modificados: \${productosModificados}\n\`;
+        mensaje += \`⚠️ Sin revisar: \${productosSinRevisar}\n\`;
+        mensaje += \`📝 Notas permanentes activas: \${Object.keys(notasConteo).length}\`;
         alert(mensaje);
-        cargarConteo();
+
         await cargarDatosIniciales();
+        cargarConteo();
     } catch (error) {
         console.error('Error:', error);
         alert('Error al guardar');
     }
+}
+
+function borrarNotaConteo(prodId) {
+    const input = document.getElementById(\`nota-\${prodId}\`);
+    if (!input) return;
+    if (!confirm('¿Borrar la nota permanente de este producto?')) return;
+    input.value = '';
+    mostrarToast('🗑️ Nota marcada para borrar. Guardá el conteo para confirmar.', 'alerta', 3500);
 }
 
 function filtrarConteo() {
@@ -4263,7 +4300,7 @@ async function exportarDatos() {
         const backup = { 
             fecha: new Date().toLocaleString('es-ES'), 
             version: '4.4', 
-            productos: [], empleados: [], stock: {}, stockCamara: {}, 
+            productos: [], empleados: [], stock: {}, stockCamara: {}, notasConteo: {}, 
             tareas: [], tareasCompletadas: {}, eventos: [], 
             historialConteos: [], pedidosCamara: [], movimientosCamara: [], 
             cierres: [], cajas: [], gastos: [], avisos: [], 
@@ -4327,6 +4364,7 @@ async function importarDatos() {
         if (backup.consumos) for (const consumo of backup.consumos) { const { id, ...data } = consumo; await db.collection('consumos').doc(id).set(data); }
         await db.collection('config').doc('stock').set({ data: backup.stock || {} });
         await db.collection('config').doc('stockCamara').set({ data: backup.stockCamara || {} });
+        await db.collection('config').doc('notasConteo').set({ data: backup.notasConteo || {} });
         await db.collection('config').doc('tareasCompletadas').set({ data: backup.tareasCompletadas || {} });
         alert('✅ Restaurado. Recargando...');
         location.reload();
