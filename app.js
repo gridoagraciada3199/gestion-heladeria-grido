@@ -311,6 +311,13 @@ function iniciarSincronizacionEnVivo() {
         if (tabActiva && tabActiva.id === 'conteo') cargarConteo();
     });
     listenersEnVivo.push(unsubNotasConteo);
+
+    const unsubNotasPedidos = db.collection('config').doc('notasPedidos').onSnapshot(doc => {
+        notasPedidos = doc.exists ? (doc.data().data || {}) : {};
+        const tabActiva = document.querySelector('.tab-content.active');
+        if (tabActiva && tabActiva.id === 'gestion' && document.getElementById('formularioPedido')?.style.display !== 'none') renderProductosPedido();
+    });
+    listenersEnVivo.push(unsubNotasPedidos);
     
     const unsubTareas = db.collection('tareas').onSnapshot(snapshot => {
         tareas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -473,6 +480,7 @@ let empleados = [];
 let stock = {};
 let stockCamara = {};
 let notasConteo = {};
+let notasPedidos = {};
 let tareas = [];
 let tareasCompletadas = {};
 let eventos = [];
@@ -522,6 +530,8 @@ async function cargarDatosIniciales() {
         stockCamara = stockCamaraDoc.exists ? stockCamaraDoc.data().data : {};
         const notasConteoDoc = await db.collection('config').doc('notasConteo').get();
         notasConteo = notasConteoDoc.exists ? (notasConteoDoc.data().data || {}) : {};
+        const notasPedidosDoc = await db.collection('config').doc('notasPedidos').get();
+        notasPedidos = notasPedidosDoc.exists ? (notasPedidosDoc.data().data || {}) : {};
         const tareasSnapshot = await db.collection('tareas').get();
         tareas = tareasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tareasCompDoc = await db.collection('config').doc('tareasCompletadas').get();
@@ -4001,38 +4011,43 @@ async function eliminarTarea(id) {
 function mostrarFormularioPedido() {
     const contenedor = document.getElementById('productosPedido');
     if (productos.length === 0) { contenedor.innerHTML = '<p>No hay productos</p>'; document.getElementById('formularioPedido').style.display = 'block'; return; }
-    let html = '';
-    const productosPorCategoria = {};
-    Object.keys(CATEGORIAS).forEach(cat => { productosPorCategoria[cat] = []; });
-    productos.forEach(prod => {
-        const categoria = prod.categoria || 'otros';
-        if (!productosPorCategoria[categoria]) productosPorCategoria[categoria] = [];
-        productosPorCategoria[categoria].push(prod);
-    });
-    Object.keys(CATEGORIAS).forEach(cat => {
-        if (productosPorCategoria[cat].length > 0) {
-            html += `<h4 style="margin: 15px 0 10px 0; color: #667eea;">${CATEGORIAS[cat]}</h4>`;
-            productosPorCategoria[cat].forEach(prod => {
-                html += `<div class="producto-pedido"><label>${prod.nombre}</label><input type="number" id="pedido-${prod.id}" placeholder="0" min="0" step="0.01"></div>`;
-            });
-        }
-    });
-    contenedor.innerHTML = html;
+    contenedor.innerHTML = '<input type="text" id="buscarProductoPedido" placeholder="🔎 Buscar producto..." oninput="filtrarProductosPedido()" style="width:100%;margin-bottom:12px;"><div id="listaProductosPedido"></div>';
+    renderProductosPedido();
     document.getElementById('formularioPedido').style.display = 'block';
 }
+function renderProductosPedido() {
+    const lista = document.getElementById('listaProductosPedido'); if (!lista) return;
+    const busqueda = (document.getElementById('buscarProductoPedido')?.value || '').toLowerCase().trim();
+    const encontrados = productos.filter(prod => prod.nombre.toLowerCase().includes(busqueda));
+    if (!encontrados.length) { lista.innerHTML = '<p class="info-box">No se encontraron productos.</p>'; return; }
+    lista.innerHTML = encontrados.map(prod => {
+        const nota = String(notasPedidos[prod.id] || '');
+        const notaEsc = nota.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return '<div class="producto-pedido" style="margin-bottom:10px;"><label><strong>' + prod.nombre + '</strong></label><input type="number" id="pedido-' + prod.id + '" placeholder="0" min="0" step="0.01"><input type="text" id="nota-pedido-' + prod.id + '" value="' + notaEsc + '" placeholder="📝 Nota permanente / referencia" maxlength="200"><div style="font-size:12px;color:#666;margin-top:4px;">' + (nota ? '📌 Nota guardada: ' + notaEsc : '') + '</div></div>';
+    }).join('');
+}
+function filtrarProductosPedido() { renderProductosPedido(); }
 function ocultarFormularioPedido() { document.getElementById('formularioPedido').style.display = 'none'; }
 async function guardarPedido() {
     try {
+        const notasActualizadas = { ...notasPedidos };
+        let productosCargados = 0;
         productos.forEach(prod => {
-            const input = document.getElementById(`pedido-${prod.id}`);
-            const valor = parseFloat(input.value);
-            if (!isNaN(valor) && valor > 0) stock[prod.id] = (stock[prod.id] || 0) + valor;
+            const input = document.getElementById('pedido-' + prod.id);
+            const nota = document.getElementById('nota-pedido-' + prod.id);
+            const valor = input ? parseFloat(input.value) : NaN;
+            const notaValor = nota ? nota.value.trim() : '';
+            if (!isNaN(valor) && valor > 0) { stock[prod.id] = (stock[prod.id] || 0) + valor; productosCargados++; }
+            if (nota) { if (notaValor !== '') notasActualizadas[prod.id] = notaValor; else if (Object.prototype.hasOwnProperty.call(notasActualizadas, prod.id)) delete notasActualizadas[prod.id]; }
         });
+        const notasCambiaron = JSON.stringify(notasActualizadas) !== JSON.stringify(notasPedidos);
+        if (productosCargados === 0 && !notasCambiaron) { alert('⚠️ No ingresaste cantidades ni modificaste notas.'); return; }
+        notasPedidos = notasActualizadas;
         await db.collection('config').doc('stock').set({ data: stock });
-        alert('✅ Pedido cargado');
-        ocultarFormularioPedido();
-        cargarDashboard();
-    } catch (error) { console.error('Error:', error); }
+        await db.collection('config').doc('notasPedidos').set({ data: notasPedidos });
+        alert('✅ Pedido cargado\n📦 Productos ingresados: ' + productosCargados + '\n📝 Notas permanentes activas: ' + Object.keys(notasPedidos).length);
+        ocultarFormularioPedido(); cargarDashboard();
+    } catch (error) { console.error('Error:', error); alert('Error al guardar el pedido'); }
 }
 
 // ========== HISTORIALES ==========
