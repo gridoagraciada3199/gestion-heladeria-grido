@@ -4053,34 +4053,57 @@ function renderProductosPedido() {
 
     capturarDatosPedidoForm();
 
-    const busqueda = (document.getElementById('buscarProductoPedido')?.value || '').toLowerCase().trim();
-    const encontrados = productos.filter(prod => prod.nombre.toLowerCase().includes(busqueda));
-
-    if (!encontrados.length) {
-        lista.innerHTML = '<p class="info-box">No se encontraron productos.</p>';
+    if (!productos.length) {
+        lista.innerHTML = '<p class="info-box">No hay productos.</p>';
         return;
     }
 
-    lista.innerHTML = encontrados.map(prod => {
+    lista.innerHTML = productos.map(prod => {
         const estado = pedidoFormData[prod.id] || {};
         const cantidad = estado.cantidad ?? '';
         const nota = estado.nota ?? String(notasPedidos[prod.id] || '');
         const notaEsc = String(nota).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const cantidadEsc = String(cantidad).replace(/"/g,'&quot;');
+        const nombreEsc = String(prod.nombre).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-        return '<div class="producto-pedido" style="margin-bottom:10px;">' +
-            '<label><strong>' + prod.nombre + '</strong></label>' +
+        return '<div class="producto-pedido item-producto-pedido" data-nombre="' + nombreEsc.toLowerCase() + '" style="margin-bottom:10px;">' +
+            '<label><strong>' + nombreEsc + '</strong></label>' +
             '<input type="number" id="pedido-' + prod.id + '" value="' + cantidadEsc + '" placeholder="0" min="0" step="0.01" oninput="actualizarCantidadPedido(\'' + prod.id + '\', this.value)">' +
             '<input type="text" id="nota-pedido-' + prod.id + '" value="' + notaEsc + '" placeholder="📝 Nota permanente / referencia" maxlength="200" oninput="actualizarNotaPedido(\'' + prod.id + '\', this.value)">' +
             '<div style="font-size:12px;color:#666;margin-top:4px;">' + (nota ? '📌 Nota guardada: ' + notaEsc : '') + '</div>' +
             '</div>';
     }).join('');
+
+    filtrarProductosPedido();
 }
 
 function filtrarProductosPedido() {
-    renderProductosPedido();
+    const buscador = document.getElementById('buscarProductoPedido');
+    const termino = (buscador?.value || '').toLowerCase().trim();
+    const items = document.querySelectorAll('#listaProductosPedido .item-producto-pedido');
+    let encontrados = 0;
+
+    items.forEach(item => {
+        const nombre = item.dataset.nombre || '';
+        const coincide = !termino || nombre.includes(termino);
+        item.style.display = coincide ? 'block' : 'none';
+        if (coincide) encontrados++;
+    });
+
+    let mensaje = document.getElementById('mensajeSinResultadosPedido');
+    if (!mensaje) {
+        mensaje = document.createElement('p');
+        mensaje.id = 'mensajeSinResultadosPedido';
+        mensaje.className = 'info-box';
+        const lista = document.getElementById('listaProductosPedido');
+        if (lista) lista.appendChild(mensaje);
+    }
+
+    if (mensaje) {
+        mensaje.textContent = 'No se encontraron productos.';
+        mensaje.style.display = encontrados === 0 ? 'block' : 'none';
+    }
 }
-function ocultarFormularioPedido() { document.getElementById('formularioPedido').style.display = 'none'; }
 async function guardarPedido() {
     try {
         capturarDatosPedidoForm();
