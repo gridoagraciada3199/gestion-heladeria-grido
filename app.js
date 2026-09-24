@@ -2519,6 +2519,19 @@ function parsearFechaPedido(fechaStr) {
     } catch(e) { return new Date(0); }
 }
 
+function ocultarFormularioPedido() {
+    const formulario = document.getElementById('formularioPedido');
+    if (formulario) formulario.style.display = 'none';
+
+    const buscador = document.getElementById('buscarProductoPedido');
+    if (buscador) buscador.value = '';
+
+    const lista = document.getElementById('listaProductosPedido');
+    if (lista) lista.innerHTML = '';
+
+    pedidoFormData = {};
+}
+
 function mostrarFormularioPedidoCamara() { document.getElementById('formularioPedidoCamara').style.display = 'block'; }
 function ocultarFormularioPedidoCamara() {
     document.getElementById('formularioPedidoCamara').style.display = 'none';
