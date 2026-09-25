@@ -74,3 +74,56 @@ window.addEventListener("fcm-token-ready", event => {
 window.addEventListener("load", () => {
   setTimeout(() => inicializarNotificacionesPush(), 1500);
 });
+async function actualizarGridoManager() {
+  const btn = document.getElementById("btnActualizarApp");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "⏳ Actualizando...";
+  }
+
+  try {
+    // Fuerza la obtención de los archivos principales sin usar la versión en caché.
+    const archivos = ["./", "./index.html", "./styles.css", "./app.js", "./pwa.js", "./sw.js"];
+    await Promise.all(archivos.map(url =>
+      fetch(url, { cache: "reload", credentials: "same-origin" }).catch(() => null)
+    ));
+
+    // Elimina cachés de Service Worker para que la próxima carga parta limpia.
+    if ("caches" in window) {
+      const nombres = await caches.keys();
+      await Promise.all(nombres.map(nombre => caches.delete(nombre)));
+    }
+
+    // Actualiza el Service Worker antes de recargar.
+    if ("serviceWorker" in navigator) {
+      const registro = await navigator.serviceWorker.getRegistration("./");
+      if (registro) {
+        try { await registro.update(); } catch (e) {}
+        try { await registro.unregister(); } catch (e) {}
+      }
+    }
+
+    // Recarga conservando el acceso directo instalado.
+    const separador = window.location.href.includes("?") ? "&" : "?";
+    window.location.replace(window.location.href + separador + "actualizacion=" + Date.now());
+  } catch (error) {
+    console.error("Error actualizando Grido Manager:", error);
+    window.location.reload();
+  }
+}
+
+function crearBotonActualizarApp() {
+  if (document.getElementById("btnActualizarApp")) return;
+
+  const btn = document.createElement("button");
+  btn.id = "btnActualizarApp";
+  btn.textContent = "🔄 Actualizar";
+  btn.title = "Buscar la última versión de Grido Manager";
+  btn.style.cssText = "position:fixed;bottom:18px;left:18px;z-index:9999;padding:12px 16px;border:0;border-radius:12px;background:#667eea;color:white;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer;";
+  btn.onclick = actualizarGridoManager;
+  document.body.appendChild(btn);
+}
+
+window.addEventListener("load", () => {
+  crearBotonActualizarApp();
+});
