@@ -2350,24 +2350,58 @@ async function cargarHistorialTareasAdmin() {
     const fechaFiltro = filtro ? filtro.value : '';
 
     try {
-        let query = db.collection('historialTareas');
-        if (fechaFiltro) query = query.where('fecha', '==', fechaFiltro);
-        const snapshot = await query.get();
+        const snapshot = await db.collection('historialTareas').get();
+        const registros = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        const registros = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-            .sort((a, b) => {
-                const empleado = String(a.empleado || '').localeCompare(String(b.empleado || ''));
-                if (empleado !== 0) return empleado;
-                return String(a.hora || '').localeCompare(String(b.hora || ''));
-            });
+        const completadasDoc = await db.collection('config').doc('tareasCompletadas').get();
+        const completadasActuales = completadasDoc.exists ? (completadasDoc.data().data || {}) : {};
 
-        if (!registros.length) {
+        const existentes = new Set(registros.map(r =>
+            String(r.fecha || '') + '|' + String(r.empleadoId || r.empleado || '') + '|' + String(r.tareaId || '') + '|' + String(r.hora || '')
+        ));
+
+        Object.keys(completadasActuales).forEach(clave => {
+            const r = completadasActuales[clave];
+            if (!r) return;
+            const fechaTexto = r.fecha || '';
+            const fechaObj = new Date(fechaTexto);
+            const fechaISO = isNaN(fechaObj.getTime()) ? '' : fechaObj.toISOString().split('T')[0];
+            const partes = clave.split('-');
+            const tareaId = r.tareaId || partes[1] || '';
+            const tarea = tareas.find(t => t.id === tareaId);
+            const registro = {
+                empleadoId: r.empleadoId || '',
+                empleado: r.empleado || 'Sin nombre',
+                tareaId: tareaId,
+                tarea: r.tarea || (tarea ? tarea.titulo : 'Tarea'),
+                momento: r.momento || (tarea ? tarea.momento : ''),
+                fecha: fechaISO,
+                fechaTexto: fechaTexto,
+                hora: r.hora || '--:--'
+            };
+            const llave = String(registro.fecha) + '|' + String(registro.empleadoId || registro.empleado) + '|' + String(registro.tareaId) + '|' + String(registro.hora);
+            if (!existentes.has(llave)) {
+                registros.push(registro);
+                existentes.add(llave);
+            }
+        });
+
+        const registrosFiltrados = registros.filter(r => !fechaFiltro || r.fecha === fechaFiltro);
+        registrosFiltrados.sort((a, b) => {
+            const fecha = String(a.fecha || '').localeCompare(String(b.fecha || ''));
+            if (fecha !== 0) return fecha;
+            const empleado = String(a.empleado || '').localeCompare(String(b.empleado || ''));
+            if (empleado !== 0) return empleado;
+            return String(a.hora || '').localeCompare(String(b.hora || ''));
+        });
+
+        if (!registrosFiltrados.length) {
             contenedor.innerHTML = '<p class="info-box">No hay tareas completadas para la fecha seleccionada.</p>';
             return;
         }
 
         const porEmpleado = {};
-        registros.forEach(r => {
+        registrosFiltrados.forEach(r => {
             const nombre = r.empleado || 'Sin nombre';
             if (!porEmpleado[nombre]) porEmpleado[nombre] = [];
             porEmpleado[nombre].push(r);
@@ -2376,17 +2410,17 @@ async function cargarHistorialTareasAdmin() {
         let html = '';
         Object.keys(porEmpleado).sort().forEach(nombre => {
             const lista = porEmpleado[nombre];
-            html += `<div class="list-item" style="margin-bottom:12px;">
-                <h4>👤 ${nombre}</h4>
-                <p><strong>${lista.length}</strong> tarea(s) completada(s)</p>
-                <div style="margin-top:8px;">`;
+            html += '<div class="list-item" style="margin-bottom:12px;">' +
+                '<h4>👤 ' + nombre + '</h4>' +
+                '<p><strong>' + lista.length + '</strong> tarea(s) completada(s)</p>' +
+                '<div style="margin-top:8px;">';
             lista.forEach(r => {
                 const momentoTexto = { apertura: '🌅 Apertura', durante: '🔄 Durante', cierre: '🌙 Cierre' };
-                html += `<div style="padding:7px 0; border-top:1px solid #eee;">
-                    <strong>✓ ${r.tarea || 'Tarea'}</strong>
-                    <span style="float:right;">🕐 ${r.hora || '--:--'}</span>
-                    <small style="display:block; color:#777;">${fechaFiltro ? '' : (r.fecha || '')} ${momentoTexto[r.momento] || ''}</small>
-                </div>`;
+                html += '<div style="padding:7px 0; border-top:1px solid #eee;">' +
+                    '<strong>✓ ' + (r.tarea || 'Tarea') + '</strong>' +
+                    '<span style="float:right;">🕐 ' + (r.hora || '--:--') + '</span>' +
+                    '<small style="display:block; color:#777;">' + (r.fecha || '') + ' ' + (momentoTexto[r.momento] || '') + '</small>' +
+                    '</div>';
             });
             html += '</div></div>';
         });
