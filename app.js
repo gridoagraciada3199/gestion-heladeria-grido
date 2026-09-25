@@ -563,14 +563,23 @@ async function cargarDatosIniciales() {
 }
 
 async function verificarReinicioDiario() {
-    const hoy = new Date().toDateString();
+    const ahora = new Date();
+    // El día operativo de la tienda va de 06:00 a 05:59 del día siguiente.
+    // De esta forma, las tareas marcadas durante la madrugada siguen perteneciendo
+    // al mismo día operativo hasta que llega el reinicio de las 06:00.
+    const diaOperativo = new Date(ahora);
+    if (ahora.getHours() < 6) {
+        diaOperativo.setDate(diaOperativo.getDate() - 1);
+    }
+    const diaOperativoTexto = diaOperativo.toDateString();
+
     try {
         const configDoc = await db.collection('config').doc('ultimoDia').get();
         const ultimoDia = configDoc.exists ? configDoc.data().fecha : null;
-        if (ultimoDia !== hoy) {
+        if (ultimoDia !== diaOperativoTexto) {
             await db.collection('config').doc('tareasCompletadas').set({ data: {} });
             tareasCompletadas = {};
-            await db.collection('config').doc('ultimoDia').set({ fecha: hoy });
+            await db.collection('config').doc('ultimoDia').set({ fecha: diaOperativoTexto });
             await limpiarHistorialViejo();
         }
     } catch (error) { console.error('Error:', error); }
