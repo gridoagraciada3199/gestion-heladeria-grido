@@ -810,6 +810,16 @@
                                 <input type="text" id="buscarTarea" placeholder="🔍 Buscar..." oninput="filtrarTareas()">
                             </div>
                             <div id="listaTareas"></div>
+
+                            <div class="historial-tareas-admin" style="margin-top:20px; padding-top:15px; border-top:2px solid #eee;">
+                                <h4>📋 Historial de tareas por empleado</h4>
+                                <p class="info-box">Solo visible para administradores. Muestra quién completó cada tarea y a qué hora.</p>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+                                    <input type="date" id="filtroHistorialTareasFecha" style="flex:1; min-width:160px;">
+                                    <button class="btn-primary" onclick="cargarHistorialTareasAdmin()">🔄 Actualizar historial</button>
+                                </div>
+                                <div id="historialTareasAdmin"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="seccion-colapsable">
