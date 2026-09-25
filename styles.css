@@ -224,9 +224,14 @@ h3 { color: #555; margin: 20px 0 15px 0; font-size: 18px; }
 .historial-item { background: #f9f9f9; border-radius: 8px; padding: 12px; margin: 8px 0; font-size: 14px; }
 .historial-item strong { color: #667eea; }
 
-.producto-pedido { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
-.producto-pedido label { flex: 1; font-weight: bold; }
-.producto-pedido input { width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 5px; text-align: center; }
+.producto-pedido { display: grid; grid-template-columns: minmax(0, 1fr) 410px; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; margin: 10px 0; }
+.producto-pedido-info { min-width: 0; text-align: left; }
+.producto-pedido-info label { display: block; font-weight: bold; text-align: left; }
+.producto-pedido-campos { display: grid; grid-template-columns: 100px 300px; gap: 10px; width: 410px; justify-content: end; }
+.producto-pedido-campos input { box-sizing: border-box; width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; }
+.producto-pedido-campos input[type="number"] { text-align: center; }
+.producto-pedido-campos input[type="text"] { text-align: left; }
+.producto-pedido-nota-guardada { grid-column: 2; width: 410px; font-size: 12px; color: #666; margin-top: 4px; text-align: left; }
 
 .pedido-camara-item { background: #fff9e6; border: 2px solid #ffc107; border-radius: 10px; padding: 15px; margin: 10px 0; }
 .pedido-camara-item.traido { background: #e8f5e9; border-color: #4caf50; opacity: 0.7; }
