@@ -1,6 +1,6 @@
 {
-  "name": "Gestión Grido",
-  "short_name": "Gestión Grido",
+  "name": "Grido Manager",
+  "short_name": "Grido Manager",
   "description": "Sistema interno de gestión de la heladería",
   "start_url": "./",
   "scope": "./",
