@@ -2664,7 +2664,7 @@ function cargarStockCamara() {
                 const cantidad = stockCamara[prod.id] || 0;
                 const unidad = prod.unidad || 'unidades';
                 html += `
-                    <div class="stock-camara-item">
+                    <div class="stock-camara-item" data-nombre="${prod.nombre.toLowerCase().replace(/"/g, '&quot;')}">
                         <div>
                             <h4>${prod.nombre}</h4>
                             <p style="font-size: 12px; margin: 5px 0 0 0; color: #666;">Unidad: ${unidad}</p>
@@ -2677,6 +2677,28 @@ function cargarStockCamara() {
         }
     });
     lista.innerHTML = `<div class="total-box" style="margin-bottom: 15px;"><p><strong>📦 Total:</strong> ${totalProductos}</p></div>` + html;
+}
+
+function filtrarStockCamara() {
+    const input = document.getElementById('buscarStockCamara');
+    const termino = (input?.value || '').trim().toLowerCase();
+    const grupos = document.querySelectorAll('#listaStockCamara .categoria-grupo');
+    grupos.forEach(grupo => {
+        const items = grupo.querySelectorAll('.stock-camara-item');
+        let visibles = 0;
+        items.forEach(item => {
+            const nombre = item.dataset.nombre || '';
+            const coincide = !termino || nombre.includes(termino);
+            item.style.display = coincide ? '' : 'none';
+            if (coincide) visibles++;
+        });
+        grupo.style.display = visibles > 0 ? '' : 'none';
+    });
+    const totalBox = document.querySelector('#listaStockCamara .total-box');
+    if (totalBox) {
+        const visibles = document.querySelectorAll('#listaStockCamara .stock-camara-item:not([style*="display: none"])').length;
+        totalBox.innerHTML = '<p><strong>📦 Mostrando:</strong> ' + visibles + '</p>';
+    }
 }
 
 function cargarHistorialCamara() {
@@ -4080,10 +4102,12 @@ function renderProductosPedido() {
         const nombreEsc = String(prod.nombre).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
         return '<div class="producto-pedido item-producto-pedido" data-nombre="' + nombreEsc.toLowerCase() + '" style="margin-bottom:10px;">' +
-            '<label><strong>' + nombreEsc + '</strong></label>' +
+            '<div class="producto-pedido-info"><label><strong>' + nombreEsc + '</strong></label></div>' +
+            '<div class="producto-pedido-campos">' +
             '<input type="number" id="pedido-' + prod.id + '" value="' + cantidadEsc + '" placeholder="0" min="0" step="0.01" oninput="actualizarCantidadPedido(\'' + prod.id + '\', this.value)">' +
             '<input type="text" id="nota-pedido-' + prod.id + '" value="' + notaEsc + '" placeholder="📝 Nota permanente / referencia" maxlength="200" oninput="actualizarNotaPedido(\'' + prod.id + '\', this.value)">' +
-            '<div style="font-size:12px;color:#666;margin-top:4px;">' + (nota ? '📌 Nota guardada: ' + notaEsc : '') + '</div>' +
+            '</div>' +
+            '<div class="producto-pedido-nota-guardada">' + (nota ? '📌 Nota guardada: ' + notaEsc : '') + '</div>' +
             '</div>';
     }).join('');
 
