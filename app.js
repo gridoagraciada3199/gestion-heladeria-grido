@@ -1001,6 +1001,9 @@ function cambiarTab(tab) {
 
 function toggleSeccion(id) {
     const contenido = document.getElementById(id);
+    if (id === 'seccionTareas' && contenido && contenido.style.display === 'none' && modoActual === 'admin') {
+        setTimeout(() => cargarHistorialTareasAdmin(), 0);
+    }
     const icono = document.getElementById('icon-' + id);
     if (contenido.style.display === 'none') {
         contenido.style.display = 'block';
@@ -2291,13 +2294,108 @@ function generarGrupoMomento(momento, titulo, listaTareas, hoy) {
 async function toggleTarea(tareaId) {
     const hoy = new Date().toDateString();
     const clave = `${hoy}-${tareaId}-${empleadoActual ? empleadoActual.id : 'admin'}`;
-    const ahora = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    if (tareasCompletadas[clave]) delete tareasCompletadas[clave];
-    else tareasCompletadas[clave] = { empleado: empleadoActual ? empleadoActual.nombre : 'Admin', hora: ahora, fecha: hoy };
+    const ahora = new Date();
+    const hora = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const fechaISO = ahora.toISOString().split('T')[0];
+    const empleadoId = empleadoActual ? empleadoActual.id : 'admin';
+    const empleadoNombre = empleadoActual ? empleadoActual.nombre : 'Admin';
+    const tarea = tareas.find(t => t.id === tareaId);
+
+    if (tareasCompletadas[clave]) {
+        delete tareasCompletadas[clave];
+        try {
+            await db.collection('config').doc('tareasCompletadas').set({ data: tareasCompletadas });
+        } catch (error) { console.error('Error:', error); }
+        return;
+    }
+
+    tareasCompletadas[clave] = {
+        empleado: empleadoNombre,
+        empleadoId,
+        tareaId,
+        tarea: tarea ? tarea.titulo : 'Tarea',
+        hora,
+        fecha: hoy
+    };
+
     try {
         await db.collection('config').doc('tareasCompletadas').set({ data: tareasCompletadas });
-        // El listener en vivo se encarga de actualizar el DOM preservando el estado
-    } catch (error) { console.error('Error:', error); }
+
+        // Historial permanente: cada tarea completada queda registrada por empleado y fecha.
+        await db.collection('historialTareas').add({
+            empleadoId,
+            empleado: empleadoNombre,
+            tareaId,
+            tarea: tarea ? tarea.titulo : 'Tarea',
+            momento: tarea ? tarea.momento : '',
+            fecha: fechaISO,
+            fechaTexto: hoy,
+            hora,
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (error) {
+        console.error('Error al guardar tarea e historial:', error);
+    }
+}
+
+async function cargarHistorialTareasAdmin() {
+    const contenedor = document.getElementById('historialTareasAdmin');
+    if (!contenedor) return;
+    if (modoActual !== 'admin') {
+        contenedor.innerHTML = '<p class="info-box">Acceso solo para administradores.</p>';
+        return;
+    }
+
+    const filtro = document.getElementById('filtroHistorialTareasFecha');
+    const fechaFiltro = filtro ? filtro.value : '';
+
+    try {
+        let query = db.collection('historialTareas');
+        if (fechaFiltro) query = query.where('fecha', '==', fechaFiltro);
+        const snapshot = await query.get();
+
+        const registros = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => {
+                const empleado = String(a.empleado || '').localeCompare(String(b.empleado || ''));
+                if (empleado !== 0) return empleado;
+                return String(a.hora || '').localeCompare(String(b.hora || ''));
+            });
+
+        if (!registros.length) {
+            contenedor.innerHTML = '<p class="info-box">No hay tareas completadas para la fecha seleccionada.</p>';
+            return;
+        }
+
+        const porEmpleado = {};
+        registros.forEach(r => {
+            const nombre = r.empleado || 'Sin nombre';
+            if (!porEmpleado[nombre]) porEmpleado[nombre] = [];
+            porEmpleado[nombre].push(r);
+        });
+
+        let html = '';
+        Object.keys(porEmpleado).sort().forEach(nombre => {
+            const lista = porEmpleado[nombre];
+            html += `<div class="list-item" style="margin-bottom:12px;">
+                <h4>👤 ${nombre}</h4>
+                <p><strong>${lista.length}</strong> tarea(s) completada(s)</p>
+                <div style="margin-top:8px;">`;
+            lista.forEach(r => {
+                const momentoTexto = { apertura: '🌅 Apertura', durante: '🔄 Durante', cierre: '🌙 Cierre' };
+                html += `<div style="padding:7px 0; border-top:1px solid #eee;">
+                    <strong>✓ ${r.tarea || 'Tarea'}</strong>
+                    <span style="float:right;">🕐 ${r.hora || '--:--'}</span>
+                    <small style="display:block; color:#777;">${fechaFiltro ? '' : (r.fecha || '')} ${momentoTexto[r.momento] || ''}</small>
+                </div>`;
+            });
+            html += '</div></div>';
+        });
+
+        contenedor.innerHTML = html;
+    } catch (error) {
+        console.error('Error cargando historial de tareas:', error);
+        contenedor.innerHTML = '<p class="info-box">No se pudo cargar el historial.</p>';
+    }
 }
 
 // ========== CALENDARIO ==========
