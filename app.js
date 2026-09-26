@@ -3157,7 +3157,7 @@ function guardarCajaInicial() {
     const notas = document.getElementById('cajaInicialNotas').value;
     if (isNaN(monto) || monto < 0) { alert('Monto válido'); return; }
     const hoy = obtenerDiaOperativo();
-    const existe = cajas.find(c => c.fecha === hoy);
+    const existe = cajas.find(c => (c.diaOperativo || c.fecha) === hoy);
     if (existe && !confirm('¿Reemplazar caja inicial de hoy?')) return;
     try {
         if (existe) await db.collection('cajas').doc(existe.id).update({ montoInicial: monto, notas });
