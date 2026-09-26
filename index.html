@@ -693,7 +693,23 @@
                             <span class="toggle-icon" id="icon-resumenCierres">▶</span>
                         </div>
                         <div class="seccion-contenido" id="resumenCierres" style="display:none;">
-                            <div id="dashboardCierres"></div>
+                            <div class="seccion-colapsable">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionConsolidadoDia')">
+                            <h3>📅 Cierre del Día</h3>
+                            <span class="toggle-icon" id="icon-seccionConsolidadoDia">▼</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionConsolidadoDia">
+                            <p class="info-box">Consolida automáticamente todos los cierres de turno del día operativo (06:00 a 05:59).</p>
+                            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px;">
+                                <div style="flex:1;min-width:180px;">
+                                    <label style="display:block;font-weight:700;margin-bottom:5px;">📅 Día operativo</label>
+                                    <input type="date" id="filtroConsolidadoDia" onchange="cargarConsolidadoDia()" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;">
+                                </div>
+                            </div>
+                            <div id="consolidadoDia"></div>
+                        </div>
+                    </div>
+                    <div id="dashboardCierres"></div>
                         </div>
                     </div>
                     <div class="seccion-colapsable">
