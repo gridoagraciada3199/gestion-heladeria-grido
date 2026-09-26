@@ -387,7 +387,7 @@ function iniciarSincronizacionEnVivo() {
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva) {
             if (tabActiva.id === 'cierre') cargarCierre();
-            if (tabActiva.id === 'cierresAdmin') cargarCierresAdmin();
+            if (tabActiva.id === 'cierresAdmin') { cargarCierresAdmin(); cargarConsolidadoDia(); }
         }
     });
     listenersEnVivo.push(unsubCierres);
@@ -3041,7 +3041,41 @@ function generarCierreItem(cierre) {
         </div>
     `;
 }
-function cargarCierresAdmin() { cargarDashboardCierres(); cargarTodosCierres(); }
+function cargarCierresAdmin() { const filtro = document.getElementById('filtroConsolidadoDia'); if (filtro && !filtro.value) filtro.value = obtenerFechaISOOperativa(); cargarDashboardCierres(); cargarTodosCierres(); cargarConsolidadoDia(); }
+function cargarConsolidadoDia() {
+    const contenedor = document.getElementById('consolidadoDia');
+    const inputFecha = document.getElementById('filtroConsolidadoDia');
+    if (!contenedor || !inputFecha) return;
+
+    const fechaISO = inputFecha.value || obtenerFechaISOOperativa();
+    const fechaSeleccionada = new Date(fechaISO + 'T12:00:00');
+    const diaSeleccionado = obtenerDiaOperativo(fechaSeleccionada);
+    const cierresDia = cierres.filter(c => obtenerDiaOperativoRegistro(c) === diaSeleccionado);
+
+    const totalVentas = cierresDia.reduce((sum, c) => sum + (c.totalVentas || 0), 0);
+    const totalEfectivo = cierresDia.reduce((sum, c) => sum + (c.efectivo || 0), 0);
+    const totalCredito = cierresDia.reduce((sum, c) => sum + (c.credito || 0), 0);
+    const totalDebito = cierresDia.reduce((sum, c) => sum + (c.debito || 0), 0);
+    const totalRetiros = cierresDia.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
+    const totalDiferencias = cierresDia.reduce((sum, c) => sum + (c.diferencia || 0), 0);
+    const empleadosDia = [...new Set(cierresDia.map(c => c.empleadoNombre || 'Sin nombre'))];
+
+    contenedor.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:15px;">
+            <div class="card"><h4>💰 Ventas del día</h4><p class="stat-number">${formatearMoneda(totalVentas)}</p></div>
+            <div class="card"><h4>💵 Efectivo</h4><p class="stat-number">${formatearMoneda(totalEfectivo)}</p></div>
+            <div class="card"><h4>💳 Crédito</h4><p class="stat-number">${formatearMoneda(totalCredito)}</p></div>
+            <div class="card"><h4>💳 Débito</h4><p class="stat-number">${formatearMoneda(totalDebito)}</p></div>
+            <div class="card"><h4>💸 Retiros</h4><p class="stat-number">${formatearMoneda(totalRetiros)}</p></div>
+            <div class="card"><h4>📋 Turnos</h4><p class="stat-number">${cierresDia.length}</p></div>
+        </div>
+        <div class="info-box">
+            <strong>👥 Empleados:</strong> ${empleadosDia.length ? empleadosDia.join(', ') : 'Sin cierres registrados'}<br>
+            <strong>📊 Diferencia acumulada de turnos:</strong> ${formatearMoneda(totalDiferencias)}
+        </div>
+        ${cierresDia.length === 0 ? '<p class="info-box">No hay cierres de turno registrados para este día operativo.</p>' : ''}
+    `;
+}
 function cargarDashboardCierres() {
     const dashboard = document.getElementById('dashboardCierres');
     if (!dashboard) return;
