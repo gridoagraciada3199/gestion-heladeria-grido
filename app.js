@@ -472,6 +472,22 @@ const CATEGORIAS_CAMARA = {
 };
 
 const DIAS_NOMBRES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+function obtenerDiaOperativo(date = new Date()) {
+    const fecha = new Date(date);
+    if (fecha.getHours() < 6) fecha.setDate(fecha.getDate() - 1);
+    return fecha.toLocaleDateString('es-ES');
+}
+function obtenerFechaISOOperativa(date = new Date()) {
+    const fecha = new Date(date);
+    if (fecha.getHours() < 6) fecha.setDate(fecha.getDate() - 1);
+    const año = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${año}-${mes}-${dia}`;
+}
+function obtenerDiaOperativoRegistro(registro) {
+    return registro?.diaOperativo || registro?.fecha || '';
+}
 
 let modoActual = null;
 let empleadoActual = null;
@@ -925,7 +941,6 @@ function configurarNavegacion() {
                 </button>
                 <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
-                    <button class="nav-btn" data-tab="caja">💰 Caja</button>
                 </div>
             </div>
         `;
@@ -2954,7 +2969,8 @@ async function guardarCierre() {
         await db.collection('cierres').add({
             numero, empleadoId: empleadoActual ? empleadoActual.id : 'admin',
             empleadoNombre: empleadoActual ? empleadoActual.nombre : 'Admin',
-            fecha: new Date().toLocaleDateString('es-ES'),
+            fecha: obtenerDiaOperativo(),
+            diaOperativo: obtenerDiaOperativo(),
             hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
             timestamp: new Date(), efectivo, credito, debito, totalVentas, conteo, diferencia,
             retiros: retirosValidos, totalRetiros: retirosValidos.reduce((sum, r) => sum + parseFloat(r.monto), 0),
@@ -3030,15 +3046,15 @@ function cargarDashboardCierres() {
     const dashboard = document.getElementById('dashboardCierres');
     if (!dashboard) return;
     if (cierres.length === 0) { dashboard.innerHTML = '<p class="info-box">No hay cierres</p>'; return; }
-    const hoy = new Date().toLocaleDateString('es-ES');
-    const cierresHoy = cierres.filter(c => c.fecha === hoy);
-    const totalVentas = cierres.reduce((sum, c) => sum + c.totalVentas, 0);
-    const totalEfectivo = cierres.reduce((sum, c) => sum + c.efectivo, 0);
-    const totalCredito = cierres.reduce((sum, c) => sum + c.credito, 0);
-    const totalDebito = cierres.reduce((sum, c) => sum + c.debito, 0);
-    const totalRetiros = cierres.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
-    const diferenciasPositivas = cierres.filter(c => c.diferencia > 0);
-    const diferenciasNegativas = cierres.filter(c => c.diferencia < 0);
+    const hoy = obtenerDiaOperativo();
+    const cierresHoy = cierres.filter(c => obtenerDiaOperativoRegistro(c) === hoy);
+    const totalVentas = cierresHoy.reduce((sum, c) => sum + (c.totalVentas || 0), 0);
+    const totalEfectivo = cierresHoy.reduce((sum, c) => sum + (c.efectivo || 0), 0);
+    const totalCredito = cierresHoy.reduce((sum, c) => sum + (c.credito || 0), 0);
+    const totalDebito = cierresHoy.reduce((sum, c) => sum + (c.debito || 0), 0);
+    const totalRetiros = cierresHoy.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
+    const diferenciasPositivas = cierresHoy.filter(c => c.diferencia > 0);
+    const diferenciasNegativas = cierresHoy.filter(c => c.diferencia < 0);
     dashboard.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
             <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"><h3>📅 Cierres Hoy</h3><p class="stat-number">${cierresHoy.length}</p></div>
@@ -3069,7 +3085,7 @@ function cargarCaja() { cargarResumenCajaHoy(); cargarHistorialCajas(); }
 function cargarResumenCajaHoy() {
     const contenedor = document.getElementById('resumenCajaHoy');
     if (!contenedor) return;
-    const hoy = new Date().toLocaleDateString('es-ES');
+    const hoy = obtenerDiaOperativo();
     const cajaHoy = cajas.find(c => c.fecha === hoy);
     const cierresHoy = cierres.filter(c => c.fecha === hoy);
     const gastosHoy = gastos.filter(g => g.fecha === hoy);
@@ -3099,13 +3115,13 @@ async function guardarCajaInicial() {
     const monto = parseFloat(document.getElementById('cajaInicialMonto').value);
     const notas = document.getElementById('cajaInicialNotas').value;
     if (isNaN(monto) || monto < 0) { alert('Monto válido'); return; }
-    const hoy = new Date().toLocaleDateString('es-ES');
+    const hoy = obtenerDiaOperativo();
     const existe = cajas.find(c => c.fecha === hoy);
     if (existe && !confirm('¿Reemplazar caja inicial de hoy?')) return;
     try {
         if (existe) await db.collection('cajas').doc(existe.id).update({ montoInicial: monto, notas });
         else await db.collection('cajas').add({
-            fecha: hoy, montoInicial: monto, notas: notas || '',
+            fecha: hoy, diaOperativo: hoy, montoInicial: monto, notas: notas || '',
             timestamp: new Date(), registradaPor: empleadoActual ? empleadoActual.nombre : 'Admin'
         });
         document.getElementById('cajaInicialMonto').value = '';
@@ -3120,7 +3136,7 @@ function calcularCierreCaja() {
     if (!contenedor) return;
     const efectivoFisico = parsearNumeroArgentino(document.getElementById('cajaFinalEfectivo').value) || 0;
     if (modoActual === 'empleado') { contenedor.innerHTML = ''; return; }
-    const hoy = new Date().toLocaleDateString('es-ES');
+    const hoy = obtenerDiaOperativo();
     const cajaHoy = cajas.find(c => c.fecha === hoy);
     const cierresHoy = cierres.filter(c => c.fecha === hoy);
     const cajaInicial = cajaHoy ? cajaHoy.montoInicial : 0;
@@ -3144,7 +3160,7 @@ async function guardarCierreCaja() {
     const efectivoFisico = parseFloat(document.getElementById('cajaFinalEfectivo').value);
     const motivo = document.getElementById('cajaMotivoDiferencia').value;
     if (isNaN(efectivoFisico)) { alert('Ingresá el efectivo'); return; }
-    const hoy = new Date().toLocaleDateString('es-ES');
+    const hoy = obtenerDiaOperativo();
     const cajaHoy = cajas.find(c => c.fecha === hoy);
     const cierresHoy = cierres.filter(c => c.fecha === hoy);
     const cajaInicial = cajaHoy ? cajaHoy.montoInicial : 0;
@@ -3161,7 +3177,7 @@ async function guardarCierreCaja() {
             });
         } else {
             await db.collection('cajas').add({
-                fecha: hoy, montoInicial: 0, notas: '', timestamp: new Date(), registradaPor: 'Sin registro',
+                fecha: hoy, diaOperativo: hoy, montoInicial: 0, notas: '', timestamp: new Date(), registradaPor: 'Sin registro',
                 cierre: { efectivoFisico, cajaEsperada, diferencia, motivo: motivo || '', hora: new Date().toLocaleTimeString('es-ES'), cerradoPor: empleadoActual ? empleadoActual.nombre : 'Admin' }
             });
         }
