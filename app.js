@@ -3076,6 +3076,12 @@ function cargarConsolidadoDia() {
         ${cierresDia.length === 0 ? '<p class="info-box">No hay cierres de turno registrados para este día operativo.</p>' : ''}
     `;
 }
+function obtenerCierresDelDiaOperativo(dia) {
+    return cierres.filter(c => obtenerDiaOperativoRegistro(c) === dia);
+}
+function obtenerGastosDelDiaOperativo(dia) {
+    return gastos.filter(g => (g.diaOperativo || g.fecha) === dia);
+}
 function cargarDashboardCierres() {
     const dashboard = document.getElementById('dashboardCierres');
     if (!dashboard) return;
@@ -3120,21 +3126,21 @@ function cargarResumenCajaHoy() {
     const contenedor = document.getElementById('resumenCajaHoy');
     if (!contenedor) return;
     const hoy = obtenerDiaOperativo();
-    const cajaHoy = cajas.find(c => c.fecha === hoy);
-    const cierresHoy = cierres.filter(c => c.fecha === hoy);
-    const gastosHoy = gastos.filter(g => g.fecha === hoy);
+    const cajaHoy = cajas.find(c => (c.diaOperativo || c.fecha) === hoy);
+    const cierresHoy = obtenerCierresDelDiaOperativo(hoy);
+    const gastosHoy = obtenerGastosDelDiaOperativo(hoy);
     const cajaInicial = cajaHoy ? cajaHoy.montoInicial : 0;
-    const ventasEfectivo = cierresHoy.reduce((sum, c) => sum + c.efectivo, 0);
-    const ventasCredito = cierresHoy.reduce((sum, c) => sum + c.credito, 0);
-    const ventasDebito = cierresHoy.reduce((sum, c) => sum + c.debito, 0);
+    const ventasEfectivo = cierresHoy.reduce((sum, c) => sum + (c.efectivo || 0), 0);
+    const ventasCredito = cierresHoy.reduce((sum, c) => sum + (c.credito || 0), 0);
+    const ventasDebito = cierresHoy.reduce((sum, c) => sum + (c.debito || 0), 0);
     const retirosCierres = cierresHoy.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
-    const gastosEfectivo = gastosHoy.filter(g => g.pago === 'efectivo').reduce((sum, g) => sum + g.monto, 0);
+    const gastosEfectivo = gastosHoy.filter(g => g.pago === 'efectivo').reduce((sum, g) => sum + (g.monto || 0), 0);
     const totalSalidas = retirosCierres + gastosEfectivo;
     const cajaEsperada = cajaInicial + ventasEfectivo - totalSalidas;
     contenedor.innerHTML = `
         <div class="caja-resumen">
             <h4>💰 Resumen del DÍA - ${hoy}</h4>
-            <div class="fila"><span>Caja inicial:</span><strong>${formatearMoneda(cajaInicial)}</strong></div>
+            <div class="fila"><span>👥 Turnos cerrados:</span><strong>${cierresHoy.length}</strong></div>
             <div class="fila"><span>💵 Ventas efectivo:</span><strong>+${formatearMoneda(ventasEfectivo)}</strong></div>
             <div class="fila"><span>💳 Crédito:</span><strong>${formatearMoneda(ventasCredito)}</strong></div>
             <div class="fila"><span>💳 Débito:</span><strong>${formatearMoneda(ventasDebito)}</strong></div>
@@ -3145,7 +3151,8 @@ function cargarResumenCajaHoy() {
         ${!cajaHoy ? '<p class="info-box">⚠️ No hay caja inicial</p>' : ''}
     `;
 }
-async function guardarCajaInicial() {
+
+function guardarCajaInicial() {
     const monto = parseFloat(document.getElementById('cajaInicialMonto').value);
     const notas = document.getElementById('cajaInicialNotas').value;
     if (isNaN(monto) || monto < 0) { alert('Monto válido'); return; }
@@ -3171,13 +3178,13 @@ function calcularCierreCaja() {
     const efectivoFisico = parsearNumeroArgentino(document.getElementById('cajaFinalEfectivo').value) || 0;
     if (modoActual === 'empleado') { contenedor.innerHTML = ''; return; }
     const hoy = obtenerDiaOperativo();
-    const cajaHoy = cajas.find(c => c.fecha === hoy);
-    const cierresHoy = cierres.filter(c => c.fecha === hoy);
-    const cajaInicial = cajaHoy ? cajaHoy.montoInicial : 0;
-    const ventasEfectivo = cierresHoy.reduce((sum, c) => sum + c.efectivo, 0);
+    const cajaHoy = cajas.find(c => (c.diaOperativo || c.fecha) === hoy);
+    const cierresHoy = obtenerCierresDelDiaOperativo(hoy);
+    const gastosHoy = obtenerGastosDelDiaOperativo(hoy).filter(g => g.pago === 'efectivo');
+    const cajaInicial = cajaHoy ? (cajaHoy.montoInicial || 0) : 0;
+    const ventasEfectivo = cierresHoy.reduce((sum, c) => sum + (c.efectivo || 0), 0);
     const retirosCierres = cierresHoy.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
-    const gastosHoy = gastos.filter(g => g.fecha === hoy && g.pago === 'efectivo');
-    const gastosEfectivo = gastosHoy.reduce((sum, g) => sum + g.monto, 0);
+    const gastosEfectivo = gastosHoy.reduce((sum, g) => sum + (g.monto || 0), 0);
     const cajaEsperada = cajaInicial + ventasEfectivo - retirosCierres - gastosEfectivo;
     const diferencia = efectivoFisico - cajaEsperada;
     const difClase = diferencia === 0 ? 'neutro' : diferencia > 0 ? 'positivo' : 'negativo';
@@ -3190,39 +3197,34 @@ function calcularCierreCaja() {
         </div>
     `;
 }
+
 async function guardarCierreCaja() {
+    if (modoActual !== 'admin') { alert('Solo el administrador puede cerrar la caja del día'); return; }
     const efectivoFisico = parseFloat(document.getElementById('cajaFinalEfectivo').value);
     const motivo = document.getElementById('cajaMotivoDiferencia').value;
     if (isNaN(efectivoFisico)) { alert('Ingresá el efectivo'); return; }
     const hoy = obtenerDiaOperativo();
-    const cajaHoy = cajas.find(c => c.fecha === hoy);
-    const cierresHoy = cierres.filter(c => c.fecha === hoy);
-    const cajaInicial = cajaHoy ? cajaHoy.montoInicial : 0;
-    const ventasEfectivo = cierresHoy.reduce((sum, c) => sum + c.efectivo, 0);
+    const cajaHoy = cajas.find(c => (c.diaOperativo || c.fecha) === hoy);
+    const cierresHoy = obtenerCierresDelDiaOperativo(hoy);
+    const cajaInicial = cajaHoy ? (cajaHoy.montoInicial || 0) : 0;
+    const ventasEfectivo = cierresHoy.reduce((sum, c) => sum + (c.efectivo || 0), 0);
     const retirosCierres = cierresHoy.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
-    const gastosHoy = gastos.filter(g => g.fecha === hoy && g.pago === 'efectivo');
-    const gastosEfectivo = gastosHoy.reduce((sum, g) => sum + g.monto, 0);
+    const gastosEfectivo = obtenerGastosDelDiaOperativo(hoy).filter(g => g.pago === 'efectivo').reduce((sum, g) => sum + (g.monto || 0), 0);
     const cajaEsperada = cajaInicial + ventasEfectivo - retirosCierres - gastosEfectivo;
     const diferencia = efectivoFisico - cajaEsperada;
     try {
-        if (cajaHoy) {
-            await db.collection('cajas').doc(cajaHoy.id).update({
-                cierre: { efectivoFisico, cajaEsperada, diferencia, motivo: motivo || '', hora: new Date().toLocaleTimeString('es-ES'), cerradoPor: empleadoActual ? empleadoActual.nombre : 'Admin' }
-            });
-        } else {
-            await db.collection('cajas').add({
-                fecha: hoy, diaOperativo: hoy, montoInicial: 0, notas: '', timestamp: new Date(), registradaPor: 'Sin registro',
-                cierre: { efectivoFisico, cajaEsperada, diferencia, motivo: motivo || '', hora: new Date().toLocaleTimeString('es-ES'), cerradoPor: empleadoActual ? empleadoActual.nombre : 'Admin' }
-            });
-        }
+        const cierre = { efectivoFisico, cajaEsperada, diferencia, motivo: motivo || '', hora: new Date().toLocaleTimeString('es-ES'), cerradoPor: empleadoActual ? empleadoActual.nombre : 'Admin' };
+        if (cajaHoy) await db.collection('cajas').doc(cajaHoy.id).update({ cierre });
+        else await db.collection('cajas').add({ fecha: hoy, diaOperativo: hoy, montoInicial: 0, notas: '', timestamp: new Date(), registradaPor: 'Admin', cierre });
         document.getElementById('cajaFinalEfectivo').value = '';
         document.getElementById('cajaMotivoDiferencia').value = '';
         document.getElementById('resumenCierreCaja').innerHTML = '';
         await cargarDatosIniciales();
         cargarCaja();
         alert('✅ Caja cerrada');
-    } catch (error) { console.error('Error:', error); }
+    } catch (error) { console.error('Error:', error); alert('Error al cerrar caja'); }
 }
+
 function cargarHistorialCajas() {
     const lista = document.getElementById('listaHistorialCaja');
     if (!lista) return;
@@ -3311,7 +3313,7 @@ async function guardarGasto() {
     if (!fecha || isNaN(monto) || monto <= 0) { alert('Completá fecha y monto'); return; }
     try {
         await db.collection('gastos').add({
-            categoria, fecha, monto, descripcion: descripcion || '', pago,
+            categoria, fecha, diaOperativo: fecha, monto, descripcion: descripcion || '', pago,
             registradoPor: empleadoActual ? empleadoActual.nombre : 'Admin',
             timestamp: new Date()
         });
@@ -3335,61 +3337,76 @@ async function eliminarGasto(id) {
 // ========== FINANZAS ==========
 function cargarFinanzas() {
     const periodo = document.getElementById('filtroFinanzasPeriodo').value;
-    let fechaInicio, fechaFin;
-    const hoy = new Date();
-    hoy.setHours(23, 59, 59, 999);
-    if (periodo === 'dia') { fechaInicio = new Date(); fechaInicio.setHours(0, 0, 0, 0); fechaFin = hoy; }
-    else if (periodo === 'semana') { fechaInicio = new Date(); fechaInicio.setDate(hoy.getDate() - 7); fechaInicio.setHours(0, 0, 0, 0); fechaFin = hoy; }
-    else if (periodo === 'mes') { fechaInicio = new Date(); fechaInicio.setDate(1); fechaInicio.setHours(0, 0, 0, 0); fechaFin = hoy; }
-    else {
-        const inicioStr = document.getElementById('filtroFechaInicio').value;
-        const finStr = document.getElementById('filtroFechaFin').value;
-        if (!inicioStr || !finStr) {
-            document.getElementById('finanzasIngresos').textContent = '$0';
-            document.getElementById('finanzasGastos').textContent = '$0';
-            document.getElementById('finanzasGanancia').textContent = '$0';
+    const ahora = new Date();
+    const diaHoy = obtenerFechaISOOperativa(ahora);
+    let fechaInicioISO = diaHoy;
+    let fechaFinISO = diaHoy;
+
+    if (periodo === 'semana') {
+        const inicio = new Date(ahora);
+        inicio.setDate(inicio.getDate() - 6);
+        fechaInicioISO = obtenerFechaISOOperativa(inicio);
+        fechaFinISO = diaHoy;
+    } else if (periodo === 'mes') {
+        const inicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1, 12, 0, 0);
+        fechaInicioISO = obtenerFechaISOOperativa(inicio);
+        fechaFinISO = diaHoy;
+    } else if (periodo === 'personalizado') {
+        fechaInicioISO = document.getElementById('filtroFechaInicio').value;
+        fechaFinISO = document.getElementById('filtroFechaFin').value;
+        if (!fechaInicioISO || !fechaFinISO) {
+            ['finanzasIngresos','finanzasGastos','finanzasGanancia'].forEach(id => document.getElementById(id).textContent = '$0');
+            document.getElementById('finanzasIngresosDetalle').textContent = '';
+            document.getElementById('finanzasGastosDetalle').textContent = '';
+            document.getElementById('finanzasGananciaDetalle').textContent = '';
             return;
         }
-        fechaInicio = new Date(inicioStr); fechaInicio.setHours(0, 0, 0, 0);
-        fechaFin = new Date(finStr); fechaFin.setHours(23, 59, 59, 999);
     }
-    const cierresPeriodo = cierres.filter(c => { const f = new Date(c.timestamp); return f >= fechaInicio && f <= fechaFin; });
-    const gastosPeriodo = gastos.filter(g => { const f = new Date(g.fecha); return f >= fechaInicio && f <= fechaFin; });
-    const totalIngresos = cierresPeriodo.reduce((sum, c) => sum + c.totalVentas, 0);
-    const totalGastos = gastosPeriodo.reduce((sum, g) => sum + g.monto, 0);
+
+    const cierresPeriodo = cierres.filter(c => {
+        const d = obtenerDiaOperativoRegistro(c);
+        return d >= fechaInicioISO || d >= fechaInicioISO && d <= fechaFinISO;
+    }).filter(c => {
+        const d = obtenerDiaOperativoRegistro(c);
+        return d >= fechaInicioISO && d <= fechaFinISO;
+    });
+    const gastosPeriodo = gastos.filter(g => {
+        const d = g.diaOperativo || g.fecha || '';
+        return d >= fechaInicioISO && d <= fechaFinISO;
+    });
+
+    const totalIngresos = cierresPeriodo.reduce((sum, c) => sum + (c.totalVentas || 0), 0);
+    const totalGastos = gastosPeriodo.reduce((sum, g) => sum + (g.monto || 0), 0);
     const ganancia = totalIngresos - totalGastos;
-    const totalEfectivo = cierresPeriodo.reduce((sum, c) => sum + c.efectivo, 0);
-    const totalCredito = cierresPeriodo.reduce((sum, c) => sum + c.credito, 0);
-    const totalDebito = cierresPeriodo.reduce((sum, c) => sum + c.debito, 0);
+    const totalEfectivo = cierresPeriodo.reduce((sum, c) => sum + (c.efectivo || 0), 0);
+    const totalCredito = cierresPeriodo.reduce((sum, c) => sum + (c.credito || 0), 0);
+    const totalDebito = cierresPeriodo.reduce((sum, c) => sum + (c.debito || 0), 0);
+    const totalRetiros = cierresPeriodo.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
+
     document.getElementById('finanzasIngresos').textContent = formatearMoneda(totalIngresos);
-    document.getElementById('finanzasIngresosDetalle').textContent = `${cierresPeriodo.length} cierres`;
+    document.getElementById('finanzasIngresosDetalle').textContent = `${cierresPeriodo.length} cierres de turno · ${fechaInicioISO} a ${fechaFinISO}`;
     document.getElementById('finanzasGastos').textContent = formatearMoneda(totalGastos);
     document.getElementById('finanzasGastosDetalle').textContent = `${gastosPeriodo.length} gastos`;
     document.getElementById('finanzasGanancia').textContent = formatearMoneda(ganancia);
     document.getElementById('finanzasGananciaDetalle').textContent = ganancia >= 0 ? '📈 Positiva' : '📉 Negativa';
+
     const maxIngreso = Math.max(totalEfectivo, totalCredito, totalDebito, 1);
     document.getElementById('desgloseIngresos').innerHTML = `
         <div class="desglose-item"><span>💵 Efectivo</span><div class="barra"><div class="barra-relleno" style="width: ${(totalEfectivo / maxIngreso) * 100}%"></div></div><strong>${formatearMoneda(totalEfectivo)}</strong></div>
         <div class="desglose-item"><span>💳 Crédito</span><div class="barra"><div class="barra-relleno" style="width: ${(totalCredito / maxIngreso) * 100}%"></div></div><strong>${formatearMoneda(totalCredito)}</strong></div>
         <div class="desglose-item"><span>💳 Débito</span><div class="barra"><div class="barra-relleno" style="width: ${(totalDebito / maxIngreso) * 100}%"></div></div><strong>${formatearMoneda(totalDebito)}</strong></div>
+        <div class="info-box" style="margin-top:10px;"><strong>💸 Retiros:</strong> ${formatearMoneda(totalRetiros)}</div>
     `;
+
     const gastosPorCategoria = {};
-    gastosPeriodo.forEach(g => {
-        if (!gastosPorCategoria[g.categoria]) gastosPorCategoria[g.categoria] = 0;
-        gastosPorCategoria[g.categoria] += g.monto;
-    });
+    gastosPeriodo.forEach(g => { gastosPorCategoria[g.categoria] = (gastosPorCategoria[g.categoria] || 0) + (g.monto || 0); });
     const maxGasto = Math.max(...Object.values(gastosPorCategoria), 1);
     let gastosHtml = '';
-    Object.keys(gastosPorCategoria).sort((a, b) => gastosPorCategoria[b] - gastosPorCategoria[a]).forEach(cat => {
-        gastosHtml += `
-            <div class="desglose-item">
-                <span>${CATEGORIAS_GASTOS[cat] || cat}</span>
-                <div class="barra"><div class="barra-relleno" style="width: ${(gastosPorCategoria[cat] / maxGasto) * 100}%; background: linear-gradient(135deg, #ff4757 0%, #c44569 100%);"></div></div>
-                <strong>${formatearMoneda(gastosPorCategoria[cat])}</strong>
-            </div>
-        `;
+    Object.keys(gastosPorCategoria).sort((a,b) => gastosPorCategoria[b] - gastosPorCategoria[a]).forEach(cat => {
+        gastosHtml += `<div class="desglose-item"><span>${CATEGORIAS_GASTOS[cat] || cat}</span><div class="barra"><div class="barra-relleno" style="width:${(gastosPorCategoria[cat] / maxGasto) * 100}%;background:linear-gradient(135deg,#ff4757 0%,#c44569 100%);"></div></div><strong>${formatearMoneda(gastosPorCategoria[cat])}</strong></div>`;
     });
     document.getElementById('desgloseGastos').innerHTML = gastosHtml || '<p class="info-box">No hay gastos</p>';
+
     cargarReporteDescuentos();
     cargarProductosRentables();
 }
