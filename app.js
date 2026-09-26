@@ -3152,7 +3152,7 @@ function cargarResumenCajaHoy() {
     `;
 }
 
-function guardarCajaInicial() {
+async function guardarCajaInicial() {
     const monto = parseFloat(document.getElementById('cajaInicialMonto').value);
     const notas = document.getElementById('cajaInicialNotas').value;
     if (isNaN(monto) || monto < 0) { alert('Monto válido'); return; }
