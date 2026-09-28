@@ -2457,6 +2457,20 @@ async function cargarHistorialTareasAdmin() {
 }
 
 // ========== CALENDARIO ==========
+function parsearFechaCalendario(fechaStr) {
+    if (!fechaStr) return null;
+    const partes = String(fechaStr).split('-');
+    if (partes.length === 3) {
+        const año = parseInt(partes[0], 10);
+        const mes = parseInt(partes[1], 10);
+        const dia = parseInt(partes[2], 10);
+        if (!isNaN(año) && !isNaN(mes) && !isNaN(dia)) {
+            return new Date(año, mes - 1, dia);
+        }
+    }
+    return null;
+}
+
 function cargarCalendario() {
     const contenedor = document.getElementById('contenedorCalendario');
     const avisosEl = document.getElementById('avisosCalendario');
@@ -2464,24 +2478,30 @@ function cargarCalendario() {
     hoy.setHours(0, 0, 0, 0);
     const filtroTipo = document.getElementById('filtroEventoTipo').value;
     const filtroPeriodo = document.getElementById('filtroEventoPeriodo').value;
-    let fechaLimite = new Date();
-    if (filtroPeriodo === 'semana') fechaLimite.setDate(hoy.getDate() + 7);
-    else if (filtroPeriodo === 'mes' || filtroPeriodo === 'proximos') fechaLimite.setDate(hoy.getDate() + 30);
-    else if (filtroPeriodo === 'todos') fechaLimite = null;
+    let fechaLimite = null;
+    if (filtroPeriodo === 'semana') {
+        fechaLimite = new Date(hoy);
+        fechaLimite.setDate(fechaLimite.getDate() + 7);
+    } else if (filtroPeriodo === 'mes' || filtroPeriodo === 'proximos') {
+        fechaLimite = new Date(hoy);
+        fechaLimite.setDate(fechaLimite.getDate() + 30);
+    }
+
     let eventosFiltrados = eventos;
     if (filtroTipo !== 'todos') eventosFiltrados = eventosFiltrados.filter(e => e.tipo === filtroTipo);
+
     if (filtroPeriodo !== 'todos') {
         eventosFiltrados = eventosFiltrados.filter(e => {
-            const fecha = new Date(e.fecha);
-            fecha.setHours(0, 0, 0, 0);
-            return fecha >= hoy && (!fechaLimite || fecha <= fechaLimite);
+            const fecha = parsearFechaCalendario(e.fecha);
+            return fecha && fecha >= hoy && (!fechaLimite || fecha <= fechaLimite);
         });
     }
+
     let avisosHtml = '';
     eventos.forEach(evento => {
-        const fechaEvento = new Date(evento.fecha);
-        fechaEvento.setHours(0, 0, 0, 0);
-        const diferenciaDias = Math.floor((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
+        const fechaEvento = parsearFechaCalendario(evento.fecha);
+        if (!fechaEvento) return;
+        const diferenciaDias = Math.round((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
         if (diferenciaDias >= 0 && diferenciaDias <= 3) {
             let textoAviso = '';
             if (diferenciaDias === 0) textoAviso = '⚠️ HOY';
@@ -2491,20 +2511,28 @@ function cargarCalendario() {
         }
     });
     avisosEl.innerHTML = avisosHtml ? `<div class="avisos-destacados"><h4>🔔 Próximos eventos</h4>${avisosHtml}</div>` : '';
+
     if (eventosFiltrados.length === 0) {
         contenedor.innerHTML = '<p class="info-box">No hay eventos</p>';
         document.getElementById('botonCrearEvento').style.display = modoActual === 'admin' ? 'block' : 'none';
         return;
     }
+
     const eventosPorTipo = { pedido: [], recepcion: [], conteo: [], otro: [] };
     eventosFiltrados.forEach(evento => {
         const tipo = evento.tipo || 'otro';
         if (eventosPorTipo[tipo]) eventosPorTipo[tipo].push(evento);
         else eventosPorTipo.otro.push(evento);
     });
+
     Object.keys(eventosPorTipo).forEach(tipo => {
-        eventosPorTipo[tipo].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        eventosPorTipo[tipo].sort((a, b) => {
+            const fechaA = parsearFechaCalendario(a.fecha);
+            const fechaB = parsearFechaCalendario(b.fecha);
+            return (fechaA || new Date(0)) - (fechaB || new Date(0));
+        });
     });
+
     const nombresTipo = { pedido: '📦 Días de Pedido', recepcion: '🚚 Recepciones', conteo: '🔢 Conteos', otro: '📌 Otros' };
     let html = '';
     Object.keys(eventosPorTipo).forEach(tipo => {
@@ -2518,9 +2546,10 @@ function cargarCalendario() {
                     <div class="categoria-contenido" id="categoria-evento-${tipo}" style="display:none;">
             `;
             eventosPorTipo[tipo].forEach(evento => {
-                const fechaEvento = new Date(evento.fecha);
-                fechaEvento.setHours(0, 0, 0, 0);
-                const fechaFormateada = fechaEvento.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                const fechaEvento = parsearFechaCalendario(evento.fecha);
+                const fechaFormateada = fechaEvento
+                    ? fechaEvento.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                    : evento.fecha;
                 const iconoTipo = { pedido: '📦', recepcion: '🚚', conteo: '🔢', otro: '📌' };
                 html += `
                     <div class="evento-item tipo-${evento.tipo}">
@@ -2534,6 +2563,7 @@ function cargarCalendario() {
             html += `</div></div>`;
         }
     });
+
     contenedor.innerHTML = html;
     document.getElementById('botonCrearEvento').style.display = modoActual === 'admin' ? 'block' : 'none';
 }
