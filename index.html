@@ -131,6 +131,25 @@
                     <div id="fichajeContenido"></div>
                     <div id="fichajeAdmin" style="display:none;">
                         <div class="seccion-colapsable" style="margin-top: 20px;">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionImportarVentasSmartFran')">
+                            <h3>📥 Subir ventas de SmartFran</h3>
+                            <span class="toggle-icon" id="icon-seccionImportarVentasSmartFran">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionImportarVentasSmartFran" style="display:none;">
+                            <p class="info-box">Importá el Excel de ventas de SmartFran para incorporarlo al dashboard financiero. Los cierres de turno se mantienen separados.</p>
+                            <button class="btn-success" onclick="document.getElementById('archivoExcelFinanzas').click()">📥 Seleccionar Excel</button>
+                            <input type="file" id="archivoExcelFinanzas" accept=".xlsx,.xls,.csv" style="display:none;" onchange="procesarExcelFinanzas(event)">
+                            <div id="vistaPreviaVentasSmartFran" class="form-container" style="display:none; margin-top:15px;">
+                                <h4>📋 Vista previa de ventas</h4>
+                                <div id="tablaPreviaVentasSmartFran"></div>
+                                <div style="display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;">
+                                    <button class="btn-primary" onclick="confirmarImportacionVentasSmartFran()">✅ Cargar ventas</button>
+                                    <button class="btn-secondary" onclick="cancelarImportacionVentasSmartFran()">Cancelar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable" style="margin-top: 20px;">
                             <div class="seccion-header" onclick="toggleSeccion('fichajeHistorial')">
                                 <h3>📊 Historial Completo (solo admin)</h3>
                                 <span class="toggle-icon" id="icon-fichajeHistorial">▶</span>
@@ -411,22 +430,17 @@
                             <div class="form-container">
                                 <label style="font-weight: bold; display: block;">🔢 Número de turno:</label>
                                 <input type="text" id="cierreNumero" placeholder="Ej: 1, 2, 3...">
-                                <h4 style="margin: 20px 0 10px 0; color: #667eea;">💰 Ventas del turno</h4>
-                                <label style="font-weight: bold; display: block;">Efectivo:</label>
-                                <input type="number" id="cierreEfectivo" placeholder="$" step="0.01" min="0" oninput="calcularTotalCierre()">
+                                <h4 style="margin: 20px 0 10px 0; color: #667eea;">💰 Dinero registrado del turno</h4>
                                 <label style="font-weight: bold; display: block;">Tarjeta de Crédito:</label>
                                 <input type="number" id="cierreCredito" placeholder="$" step="0.01" min="0" oninput="calcularTotalCierre()">
                                 <label style="font-weight: bold; display: block;">Tarjeta de Débito:</label>
                                 <input type="number" id="cierreDebito" placeholder="$" step="0.01" min="0" oninput="calcularTotalCierre()">
-                                <div class="total-box">
-                                    <strong>💵 Total de ventas:</strong> <span id="cierreTotal">$0</span>
-                                </div>
                                 <div id="seccionControlCajaEmpleado">
-                                    <h4 style="margin: 20px 0 10px 0; color: #667eea;">📊 Control de caja</h4>
-                                    <label style="font-weight: bold; display: block;">Conteo de caja (efectivo físico):</label>
-                                    <input type="number" id="cierreConteo" placeholder="$" step="0.01" min="0" oninput="calcularDiferenciaCierre()">
+                                    <h4 style="margin: 20px 0 10px 0; color: #667eea;">📊 Caja</h4>
+                                    <label style="font-weight: bold; display: block;">Efectivo físico contado:</label>
+                                    <input type="number" id="cierreConteo" placeholder="$" step="0.01" min="0" oninput="calcularTotalCierre()">
                                     <div class="total-box" id="cierreDiferenciaBox">
-                                        <strong>📊 Diferencia:</strong> <span id="cierreDiferencia">$0</span>
+                                        <strong>💰 Total dinero registrado:</strong> <span id="cierreTotal">$0</span>
                                     </div>
                                 </div>
                                 <h4 style="margin: 20px 0 10px 0; color: #667eea;">💸 Retiros de caja</h4>
@@ -612,7 +626,7 @@
                     </div>
                     <div class="dashboard-grid">
                         <div class="card" style="background: linear-gradient(135deg, #2ed573 0%, #1e9e54 100%);">
-                            <h3>💰 Ingresos Totales</h3>
+                            <h3>📊 Ventas según SmartFran</h3>
                             <p class="stat-number" id="finanzasIngresos">$0</p>
                             <p class="stat-label" id="finanzasIngresosDetalle"></p>
                         </div>
@@ -622,14 +636,14 @@
                             <p class="stat-label" id="finanzasGastosDetalle"></p>
                         </div>
                         <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                            <h3>📈 Ganancia Neta</h3>
+                            <h3>📈 Resultado (ventas - gastos)</h3>
                             <p class="stat-number" id="finanzasGanancia">$0</p>
                             <p class="stat-label" id="finanzasGananciaDetalle"></p>
                         </div>
                     </div>
                     <div class="seccion-colapsable" style="margin-top: 20px;">
                         <div class="seccion-header" onclick="toggleSeccion('seccionDesgloseIngresos')">
-                            <h3>💵 Desglose de Ingresos</h3>
+                            <h3>💰 Dinero y ventas registradas</h3>
                             <span class="toggle-icon" id="icon-seccionDesgloseIngresos">▶</span>
                         </div>
                         <div class="seccion-contenido" id="seccionDesgloseIngresos" style="display:none;">
