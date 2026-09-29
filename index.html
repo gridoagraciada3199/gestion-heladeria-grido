@@ -450,11 +450,12 @@
                 </section>
 
                 <section id="caja" class="tab-content">
-                    <h2>💰 Caja - Cierre del Día (consolidado)</h2>
-                    <p class="info-box">Resumen del día completo. Solo admin.</p>
+                    <h2>💰 Caja</h2>
+                    <p class="info-box">Registrá el dinero inicial con el que abrís la caja de tu turno.</p>
+
                     <div class="seccion-colapsable">
                         <div class="seccion-header" onclick="toggleSeccion('seccionCajaInicial')">
-                            <h3>💵 Registrar Caja Inicial del Día</h3>
+                            <h3>💵 Registrar Caja Inicial</h3>
                             <span class="toggle-icon" id="icon-seccionCajaInicial">▶</span>
                         </div>
                         <div class="seccion-contenido" id="seccionCajaInicial" style="display:none;">
@@ -462,41 +463,16 @@
                                 <label style="font-weight: bold; display: block;">Monto inicial en caja:</label>
                                 <input type="number" id="cajaInicialMonto" placeholder="$" step="0.01" min="0">
                                 <label style="font-weight: bold; display: block;">Notas (opcional):</label>
-                                <input type="text" id="cajaInicialNotas" placeholder="Ej: Billetes de 100, cambio, etc.">
+                                <input type="text" id="cajaInicialNotas" placeholder="Ej: Billetes, monedas, cambio, etc.">
                                 <button class="btn-primary" onclick="guardarCajaInicial()" style="width: 100%; margin-top: 10px;">💾 Guardar Caja Inicial</button>
                             </div>
                         </div>
                     </div>
-                    <div class="seccion-colapsable">
-                        <div class="seccion-header" onclick="toggleSeccion('seccionCierreCaja')">
-                            <h3>🔒 Cierre de Caja del Día</h3>
-                            <span class="toggle-icon" id="icon-seccionCierreCaja">▶</span>
-                        </div>
-                        <div class="seccion-contenido" id="seccionCierreCaja" style="display:none;">
-                            <div class="form-container">
-                                <p class="info-box">Al final del día, contá el efectivo físico y registrá el cierre</p>
-                                <label style="font-weight: bold; display: block;">Efectivo físico en caja:</label>
-                                <input type="number" id="cajaFinalEfectivo" placeholder="$" step="0.01" min="0" oninput="calcularCierreCaja()">
-                                <div id="resumenCierreCaja"></div>
-                                <label style="font-weight: bold; display: block; margin-top: 15px;">Motivo (si algo no cuadra):</label>
-                                <textarea id="cajaMotivoDiferencia" placeholder="Ej: Se pagó un gasto sin registrar..."></textarea>
-                                <button class="btn-primary" onclick="guardarCierreCaja()" style="width: 100%; margin-top: 10px;">🔒 Cerrar Caja del Día</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="seccionCajaAdmin">
-                        <div class="seccion-colapsable">
-                            <div class="seccion-header" onclick="toggleSeccion('seccionCajaHoy')">
-                                <h3>📊 Caja de Hoy (Resumen)</h3>
-                                <span class="toggle-icon" id="icon-seccionCajaHoy">▶</span>
-                            </div>
-                            <div class="seccion-contenido" id="seccionCajaHoy" style="display:none;">
-                                <div id="resumenCajaHoy"></div>
-                            </div>
-                        </div>
+
+                    <div id="seccionCajaAdmin" style="display:none;">
                         <div class="seccion-colapsable">
                             <div class="seccion-header" onclick="toggleSeccion('seccionHistorialCaja')">
-                                <h3>📜 Historial de Cajas</h3>
+                                <h3>📜 Historial de Aperturas de Caja</h3>
                                 <span class="toggle-icon" id="icon-seccionHistorialCaja">▶</span>
                             </div>
                             <div class="seccion-contenido" id="seccionHistorialCaja" style="display:none;">
@@ -669,14 +645,6 @@
                             <div id="desgloseGastos"></div>
                         </div>
                     </div>
-                    <div class="seccion-colapsable">
-                        <div class="seccion-header" onclick="toggleSeccion('seccionProductosRentables')">
-                            <h3>🏆 Productos Más Rentables</h3>
-                            <span class="toggle-icon" id="icon-seccionProductosRentables">▶</span>
-                        </div>
-                        <div class="seccion-contenido" id="seccionProductosRentables" style="display:none;">
-                            <div id="productosRentables"></div>
-                        </div>
                     </div>
                     <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
                         <button class="btn-primary" onclick="exportarFinanzasPDF()">📄 Exportar PDF</button>
