@@ -488,6 +488,22 @@ function obtenerFechaISOOperativa(date = new Date()) {
 function obtenerDiaOperativoRegistro(registro) {
     return registro?.diaOperativo || registro?.fecha || '';
 }
+function normalizarFechaOperativaISO(valor) {
+    if (!valor) return '';
+    const texto = String(valor).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+    const partes = texto.split(/[\\/.-]/).map(Number);
+    if (partes.length === 3 && partes.every(n => !isNaN(n))) {
+        let dia, mes, año;
+        if (partes[0] > 31) { año = partes[0]; mes = partes[1]; dia = partes[2]; }
+        else { dia = partes[0]; mes = partes[1]; año = partes[2]; }
+        if (año < 100) año += 2000;
+        if (año > 1900 && mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+            return `${año}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+        }
+    }
+    return '';
+}
 
 let modoActual = null;
 let empleadoActual = null;
@@ -535,7 +551,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 });
 
-async function cargarDatosIniciales() {
+async async function cargarDatosIniciales() {
     try {
         const productosSnapshot = await db.collection('productos').get();
         productos = productosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -941,6 +957,7 @@ function configurarNavegacion() {
                 </button>
                 <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
+                    <button class="nav-btn" data-tab="caja">💰 Caja</button>
                 </div>
             </div>
         `;
@@ -3151,7 +3168,7 @@ function cargarTodosCierres() {
 }
 
 // ========== CONTROL DE CAJA ==========
-function cargarCaja() { cargarResumenCajaHoy(); cargarHistorialCajas(); }
+function cargarCaja() { cargarHistorialCajas(); }
 function cargarResumenCajaHoy() {
     const contenedor = document.getElementById('resumenCajaHoy');
     if (!contenedor) return;
@@ -3258,26 +3275,29 @@ async function guardarCierreCaja() {
 function cargarHistorialCajas() {
     const lista = document.getElementById('listaHistorialCaja');
     if (!lista) return;
-    if (cajas.length === 0) { lista.innerHTML = '<p class="info-box">No hay registros</p>'; return; }
-    const cajasOrdenadas = cajas.sort((a, b) => {
+    if (modoActual !== 'admin') {
+        lista.innerHTML = '';
+        return;
+    }
+    if (cajas.length === 0) {
+        lista.innerHTML = '<p class="info-box">No hay aperturas registradas</p>';
+        return;
+    }
+    const cajasOrdenadas = [...cajas].sort((a, b) => {
         const ta = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)) : new Date(0);
         const tb = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) : new Date(0);
         return tb - ta;
     });
     let html = '';
-    cajasOrdenadas.slice(0, 15).forEach(caja => {
-        const difClase = !caja.cierre ? '' : caja.cierre.diferencia === 0 ? 'positivo' : caja.cierre.diferencia > 0 ? 'neutro' : 'negativo';
+    cajasOrdenadas.slice(0, 30).forEach(caja => {
         html += `
             <div class="caja-item">
-                <h4>📅 ${caja.fecha}</h4>
+                <h4>📅 ${caja.fecha || caja.diaOperativo || ''}</h4>
                 <div class="detalle">
-                    <p>💵 Caja inicial: <strong>${formatearMoneda(caja.montoInicial)}</strong></p>
-                    ${caja.cierre ? `<p>💰 Efectivo final: <strong>${formatearMoneda(caja.cierre.efectivoFisico)}</strong></p>` : ''}
-                    ${caja.cierre ? `<p>📊 Esperada: <strong>${formatearMoneda(caja.cierre.cajaEsperada)}</strong></p>` : ''}
-                    ${caja.cierre ? `<p class="${difClase}"><strong>Diferencia: ${formatearMoneda(caja.cierre.diferencia)}</strong></p>` : '<p style="color: #ffa502;">⚠️ Sin cerrar</p>'}
+                    <p>💵 Caja inicial: <strong>${formatearMoneda(caja.montoInicial || 0)}</strong></p>
+                    <p>👤 Registrada por: <strong>${caja.registradaPor || 'Sin registrar'}</strong></p>
                 </div>
-                ${caja.cierre && caja.cierre.motivo ? `<p style="margin-top: 10px; font-style: italic; color: #666;">📝 ${caja.cierre.motivo}</p>` : ''}
-                ${caja.cierre ? `<p style="font-size: 12px; color: #999; margin-top: 5px;">Por ${caja.cierre.cerradoPor} a las ${caja.cierre.hora}</p>` : ''}
+                ${caja.notas ? `<p style="margin-top: 10px; font-style: italic; color: #666;">📝 ${caja.notas}</p>` : ''}
             </div>
         `;
     });
@@ -3394,24 +3414,21 @@ function cargarFinanzas() {
     }
 
     const cierresPeriodo = cierres.filter(c => {
-        const d = obtenerDiaOperativoRegistro(c);
-        return d >= fechaInicioISO || d >= fechaInicioISO && d <= fechaFinISO;
-    }).filter(c => {
-        const d = obtenerDiaOperativoRegistro(c);
+        const d = normalizarFechaOperativaISO(obtenerDiaOperativoRegistro(c));
         return d >= fechaInicioISO && d <= fechaFinISO;
     });
     const gastosPeriodo = gastos.filter(g => {
-        const d = g.diaOperativo || g.fecha || '';
+        const d = normalizarFechaOperativaISO(g.diaOperativo || g.fecha || '');
         return d >= fechaInicioISO && d <= fechaFinISO;
     });
 
-    const totalIngresos = cierresPeriodo.reduce((sum, c) => sum + (c.totalVentas || 0), 0);
-    const totalGastos = gastosPeriodo.reduce((sum, g) => sum + (g.monto || 0), 0);
+    const totalIngresos = cierresPeriodo.reduce((sum, c) => sum + Number(c.totalVentas || 0), 0);
+    const totalGastos = gastosPeriodo.reduce((sum, g) => sum + Number(g.monto || 0), 0);
     const ganancia = totalIngresos - totalGastos;
-    const totalEfectivo = cierresPeriodo.reduce((sum, c) => sum + (c.efectivo || 0), 0);
-    const totalCredito = cierresPeriodo.reduce((sum, c) => sum + (c.credito || 0), 0);
-    const totalDebito = cierresPeriodo.reduce((sum, c) => sum + (c.debito || 0), 0);
-    const totalRetiros = cierresPeriodo.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
+    const totalEfectivo = cierresPeriodo.reduce((sum, c) => sum + Number(c.efectivo || 0), 0);
+    const totalCredito = cierresPeriodo.reduce((sum, c) => sum + Number(c.credito || 0), 0);
+    const totalDebito = cierresPeriodo.reduce((sum, c) => sum + Number(c.debito || 0), 0);
+    const totalRetiros = cierresPeriodo.reduce((sum, c) => sum + Number(c.totalRetiros || 0), 0);
 
     document.getElementById('finanzasIngresos').textContent = formatearMoneda(totalIngresos);
     document.getElementById('finanzasIngresosDetalle').textContent = `${cierresPeriodo.length} cierres de turno · ${fechaInicioISO} a ${fechaFinISO}`;
@@ -3438,7 +3455,6 @@ function cargarFinanzas() {
     document.getElementById('desgloseGastos').innerHTML = gastosHtml || '<p class="info-box">No hay gastos</p>';
 
     cargarReporteDescuentos();
-    cargarProductosRentables();
 }
 function cargarReporteDescuentos() {
     const totalDescuentos = productos.reduce((sum, prod) => {
