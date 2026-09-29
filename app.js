@@ -551,7 +551,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 });
 
-async async function cargarDatosIniciales() {
+async function cargarDatosIniciales() {
     try {
         const productosSnapshot = await db.collection('productos').get();
         productos = productosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -3168,7 +3168,11 @@ function cargarTodosCierres() {
 }
 
 // ========== CONTROL DE CAJA ==========
-function cargarCaja() { cargarHistorialCajas(); }
+function cargarCaja() {
+    const adminBox = document.getElementById('seccionCajaAdmin');
+    if (adminBox) adminBox.style.display = modoActual === 'admin' ? 'block' : 'none';
+    cargarHistorialCajas();
+}
 function cargarResumenCajaHoy() {
     const contenedor = document.getElementById('resumenCajaHoy');
     if (!contenedor) return;
