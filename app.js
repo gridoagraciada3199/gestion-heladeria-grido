@@ -405,6 +405,12 @@ function iniciarSincronizacionEnVivo() {
         if (tabActiva && tabActiva.id === 'gastos') cargarGastos();
     });
     listenersEnVivo.push(unsubGastos);
+    const unsubVentasSmartFran = db.collection('ventasSmartFran').onSnapshot(snapshot => {
+        ventasSmartFran = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const tabActiva = document.querySelector('.tab-content.active');
+        if (tabActiva && tabActiva.id === 'finanzas') cargarFinanzas();
+    });
+    listenersEnVivo.push(unsubVentasSmartFran);
     
     const unsubAvisos = db.collection('avisos').onSnapshot(snapshot => {
         avisos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -524,6 +530,7 @@ let cierres = [];
 let retirosTemporales = [];
 let cajas = [];
 let gastos = [];
+let ventasSmartFran = [];
 let avisos = [];
 let productosImportar = [];
 let fichajes = [];
@@ -583,6 +590,8 @@ async function cargarDatosIniciales() {
         cajas = cajasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const gastosSnapshot = await db.collection('gastos').get();
         gastos = gastosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const ventasSmartFranSnapshot = await db.collection('ventasSmartFran').get();
+        ventasSmartFran = ventasSmartFranSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const avisosSnapshot = await db.collection('avisos').get();
         avisos = avisosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const fichajesSnapshot = await db.collection('fichajes').get();
@@ -850,7 +859,7 @@ async function borrarTodoPrueba() {
     if (!confirm('⚠️ ¿BORRAR TODOS los datos del entorno de pruebas?')) return;
     if (!confirm('⚠️ ÚLTIMA CONFIRMACIÓN. ¿Continuar?')) return;
     try {
-        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos'];
+        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos', 'ventasSmartFran'];
         for (const coleccion of colecciones) {
             const snap = await db.collection(coleccion).get();
             const batch = db.batch();
@@ -2938,30 +2947,18 @@ function cargarCierre() {
     renderizarRetiros();
 }
 function calcularTotalCierre() {
-    const efectivo = parseFloat(document.getElementById('cierreEfectivo').value) || 0;
+    const efectivoFisico = parseFloat(document.getElementById('cierreConteo').value) || 0;
     const credito = parseFloat(document.getElementById('cierreCredito').value) || 0;
     const debito = parseFloat(document.getElementById('cierreDebito').value) || 0;
-    const total = efectivo + credito + debito;
+    const total = efectivoFisico + credito + debito;
     document.getElementById('cierreTotal').textContent = formatearMoneda(total);
     calcularDiferenciaCierre();
 }
 function calcularDiferenciaCierre() {
-    if (modoActual === 'empleado') {
-        const difBox = document.getElementById('cierreDiferenciaBox');
-        difBox.className = 'total-box neutro';
-        document.getElementById('cierreDiferencia').textContent = '🔒 Solo visible para admin';
-        return;
-    }
-    const efectivo = parseFloat(document.getElementById('cierreEfectivo').value) || 0;
-    const conteo = parseFloat(document.getElementById('cierreConteo').value) || 0;
-    const diferencia = conteo - efectivo;
-    const difElement = document.getElementById('cierreDiferencia');
     const difBox = document.getElementById('cierreDiferenciaBox');
-    difElement.textContent = formatearMoneda(diferencia);
-    difBox.className = 'total-box';
-    if (diferencia > 0) { difBox.classList.add('positivo'); difElement.textContent = `+${formatearMoneda(diferencia)} (Sobra)`; }
-    else if (diferencia < 0) { difBox.classList.add('negativo'); difElement.textContent = `-${formatearMoneda(Math.abs(diferencia))} (Falta)`; }
-    else { difBox.classList.add('neutro'); difElement.textContent = '$0 (Cuadra perfecto)'; }
+    if (!difBox) return;
+    difBox.className = 'total-box neutro';
+    document.getElementById('cierreDiferencia').textContent = '🔒 Solo visible para admin';
 }
 function agregarRetiro() { retirosTemporales.push({ monto: '', motivo: '', destino: '' }); renderizarRetiros(); }
 function eliminarRetiro(index) { retirosTemporales.splice(index, 1); renderizarRetiros(); }
@@ -3000,31 +2997,28 @@ function renderizarRetiros() {
 }
 async function guardarCierre() {
     const numero = document.getElementById('cierreNumero').value;
-    const efectivo = parseFloat(document.getElementById('cierreEfectivo').value) || 0;
+    const efectivoFisico = parseFloat(document.getElementById('cierreConteo').value) || 0;
     const credito = parseFloat(document.getElementById('cierreCredito').value) || 0;
     const debito = parseFloat(document.getElementById('cierreDebito').value) || 0;
-    const conteo = parseFloat(document.getElementById('cierreConteo').value) || 0;
     const notas = document.getElementById('cierreNotas').value;
     if (!numero) { alert('Ingresá el número de turno'); return; }
-    if (efectivo === 0 && credito === 0 && debito === 0) {
-        if (!confirm('No ingresaste ventas. ¿Guardar igual?')) return;
+    if (efectivoFisico === 0 && credito === 0 && debito === 0) {
+        if (!confirm('No ingresaste importes. ¿Guardar igual?')) return;
     }
-    const totalVentas = efectivo + credito + debito;
-    const diferencia = conteo - efectivo;
+    const totalRegistrado = efectivoFisico + credito + debito;
     const retirosValidos = retirosTemporales.filter(r => r.monto && parseFloat(r.monto) > 0);
+    const totalRetiros = retirosValidos.reduce((sum, r) => sum + parseFloat(r.monto), 0);
     try {
         await db.collection('cierres').add({
             numero, empleadoId: empleadoActual ? empleadoActual.id : 'admin',
             empleadoNombre: empleadoActual ? empleadoActual.nombre : 'Admin',
-            fecha: obtenerDiaOperativo(),
-            diaOperativo: obtenerDiaOperativo(),
+            fecha: obtenerDiaOperativo(), diaOperativo: obtenerDiaOperativo(),
             hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-            timestamp: new Date(), efectivo, credito, debito, totalVentas, conteo, diferencia,
-            retiros: retirosValidos, totalRetiros: retirosValidos.reduce((sum, r) => sum + parseFloat(r.monto), 0),
-            notas: notas || ''
+            timestamp: new Date(), efectivo: efectivoFisico, efectivoFisico, credito, debito,
+            totalRegistrado, totalVentas: 0, conteo: efectivoFisico, diferencia: 0,
+            retiros: retirosValidos, totalRetiros, notas: notas || ''
         });
         document.getElementById('cierreNumero').value = '';
-        document.getElementById('cierreEfectivo').value = '';
         document.getElementById('cierreCredito').value = '';
         document.getElementById('cierreDebito').value = '';
         document.getElementById('cierreConteo').value = '';
@@ -3055,73 +3049,42 @@ function cargarMisCierres() {
     lista.innerHTML = html;
 }
 function generarCierreItem(cierre) {
-    const difClase = cierre.diferencia > 0 ? 'positivo' : cierre.diferencia < 0 ? 'negativo' : 'neutro';
-    const difTexto = cierre.diferencia > 0 ? `+${formatearMoneda(cierre.diferencia)} (Sobra)` :
-                     cierre.diferencia < 0 ? `-${formatearMoneda(Math.abs(cierre.diferencia))} (Falta)` : '$0 (Cuadra)';
     let retirosHtml = '';
     if (cierre.retiros && cierre.retiros.length > 0) {
         const destinos = { 'caja-fuerte': '💰 Caja fuerte', 'banco': '🏦 Banco', 'pago-proveedor': '📄 Pago proveedor', 'gasto': '💸 Gasto', 'otro': '📌 Otro' };
-        retirosHtml = `
-            <div class="retiros-lista">
-                <h5>💸 Retiros (${cierre.retiros.length})</h5>
-                ${cierre.retiros.map(r => `<p><strong>${formatearMoneda(parseFloat(r.monto))}</strong> - ${r.motivo} → ${destinos[r.destino] || r.destino}</p>`).join('')}
-                <p style="margin-top: 8px;"><strong>Total: ${formatearMoneda(cierre.totalRetiros)}</strong></p>
-            </div>
-        `;
+        retirosHtml = `<div class="retiros-lista"><h5>💸 Retiros (${cierre.retiros.length})</h5>
+        ${cierre.retiros.map(r => `<p><strong>${formatearMoneda(parseFloat(r.monto))}</strong> - ${r.motivo} → ${destinos[r.destino] || r.destino}</p>`).join('')}
+        <p style="margin-top:8px;"><strong>Total: ${formatearMoneda(cierre.totalRetiros)}</strong></p></div>`;
     }
-    return `
-        <div class="cierre-item">
-            <h4>🧾 Turno #${cierre.numero} - ${cierre.empleadoNombre}</h4>
-            <p style="color: #666; font-size: 13px;">📅 ${cierre.fecha} a las ${cierre.hora}</p>
-            <div class="detalle">
-                <p>💵 Efectivo: <strong>${formatearMoneda(cierre.efectivo)}</strong></p>
-                <p>💳 Crédito: <strong>${formatearMoneda(cierre.credito)}</strong></p>
-                <p>💳 Débito: <strong>${formatearMoneda(cierre.debito)}</strong></p>
-                <p>📊 Conteo: <strong>${formatearMoneda(cierre.conteo)}</strong></p>
-            </div>
-            <div class="totales">
-                <p><strong>💰 Total ventas:</strong> ${formatearMoneda(cierre.totalVentas)}</p>
-                <p><strong>📊 Diferencia:</strong> <span class="${difClase}">${difTexto}</span></p>
-            </div>
-            ${retirosHtml}
-            ${cierre.notas ? `<p style="margin-top: 10px; font-style: italic; color: #666;">📝 ${cierre.notas}</p>` : ''}
-        </div>
-    `;
+    const efectivoFisico=Number(cierre.efectivoFisico ?? cierre.efectivo ?? cierre.conteo ?? 0);
+    const totalRegistrado=Number(cierre.totalRegistrado ?? (efectivoFisico+Number(cierre.credito||0)+Number(cierre.debito||0)));
+    return `<div class="cierre-item"><h4>🧾 Turno #${cierre.numero} - ${cierre.empleadoNombre}</h4>
+        <p style="color:#666;font-size:13px;">📅 ${cierre.fecha} a las ${cierre.hora}</p>
+        <div class="detalle"><p>💵 Efectivo físico contado: <strong>${formatearMoneda(efectivoFisico)}</strong></p>
+        <p>💳 Crédito registrado: <strong>${formatearMoneda(cierre.credito)}</strong></p>
+        <p>💳 Débito registrado: <strong>${formatearMoneda(cierre.debito)}</strong></p></div>
+        <div class="totales"><p><strong>💰 Total registrado del turno:</strong> ${formatearMoneda(totalRegistrado)}</p></div>
+        ${retirosHtml}${cierre.notas ? `<p style="margin-top:10px;font-style:italic;color:#666;">📝 ${cierre.notas}</p>` : ''}</div>`;
 }
 function cargarCierresAdmin() { const filtro = document.getElementById('filtroConsolidadoDia'); if (filtro && !filtro.value) filtro.value = obtenerFechaISOOperativa(); cargarDashboardCierres(); cargarTodosCierres(); cargarConsolidadoDia(); }
 function cargarConsolidadoDia() {
-    const contenedor = document.getElementById('consolidadoDia');
-    const inputFecha = document.getElementById('filtroConsolidadoDia');
-    if (!contenedor || !inputFecha) return;
-
-    const fechaISO = inputFecha.value || obtenerFechaISOOperativa();
-    const fechaSeleccionada = new Date(fechaISO + 'T12:00:00');
-    const diaSeleccionado = obtenerDiaOperativo(fechaSeleccionada);
-    const cierresDia = cierres.filter(c => obtenerDiaOperativoRegistro(c) === diaSeleccionado);
-
-    const totalVentas = cierresDia.reduce((sum, c) => sum + (c.totalVentas || 0), 0);
-    const totalEfectivo = cierresDia.reduce((sum, c) => sum + (c.efectivo || 0), 0);
-    const totalCredito = cierresDia.reduce((sum, c) => sum + (c.credito || 0), 0);
-    const totalDebito = cierresDia.reduce((sum, c) => sum + (c.debito || 0), 0);
-    const totalRetiros = cierresDia.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
-    const totalDiferencias = cierresDia.reduce((sum, c) => sum + (c.diferencia || 0), 0);
-    const empleadosDia = [...new Set(cierresDia.map(c => c.empleadoNombre || 'Sin nombre'))];
-
-    contenedor.innerHTML = `
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:15px;">
-            <div class="card"><h4>💰 Ventas del día</h4><p class="stat-number">${formatearMoneda(totalVentas)}</p></div>
-            <div class="card"><h4>💵 Efectivo</h4><p class="stat-number">${formatearMoneda(totalEfectivo)}</p></div>
-            <div class="card"><h4>💳 Crédito</h4><p class="stat-number">${formatearMoneda(totalCredito)}</p></div>
-            <div class="card"><h4>💳 Débito</h4><p class="stat-number">${formatearMoneda(totalDebito)}</p></div>
-            <div class="card"><h4>💸 Retiros</h4><p class="stat-number">${formatearMoneda(totalRetiros)}</p></div>
-            <div class="card"><h4>📋 Turnos</h4><p class="stat-number">${cierresDia.length}</p></div>
-        </div>
-        <div class="info-box">
-            <strong>👥 Empleados:</strong> ${empleadosDia.length ? empleadosDia.join(', ') : 'Sin cierres registrados'}<br>
-            <strong>📊 Diferencia acumulada de turnos:</strong> ${formatearMoneda(totalDiferencias)}
-        </div>
-        ${cierresDia.length === 0 ? '<p class="info-box">No hay cierres de turno registrados para este día operativo.</p>' : ''}
-    `;
+    const contenedor=document.getElementById('consolidadoDia'),inputFecha=document.getElementById('filtroConsolidadoDia');
+    if(!contenedor||!inputFecha)return;
+    const fechaISO=inputFecha.value||obtenerFechaISOOperativa(),diaSeleccionado=obtenerDiaOperativo(new Date(fechaISO+'T12:00:00'));
+    const cierresDia=cierres.filter(c=>obtenerDiaOperativoRegistro(c)===diaSeleccionado);
+    const totalEfectivo=cierresDia.reduce((s,c)=>s+Number(c.efectivoFisico??c.efectivo??c.conteo??0),0);
+    const totalCredito=cierresDia.reduce((s,c)=>s+Number(c.credito||0),0),totalDebito=cierresDia.reduce((s,c)=>s+Number(c.debito||0),0);
+    const totalRegistrado=cierresDia.reduce((s,c)=>s+Number(c.totalRegistrado??(Number(c.efectivoFisico??c.efectivo??c.conteo??0)+Number(c.credito||0)+Number(c.debito||0))),0);
+    const totalRetiros=cierresDia.reduce((s,c)=>s+Number(c.totalRetiros||0),0),empleadosDia=[...new Set(cierresDia.map(c=>c.empleadoNombre||'Sin nombre'))];
+    contenedor.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:15px;">
+    <div class="card"><h4>💵 Efectivo físico contado</h4><p class="stat-number">${formatearMoneda(totalEfectivo)}</p></div>
+    <div class="card"><h4>💳 Crédito registrado</h4><p class="stat-number">${formatearMoneda(totalCredito)}</p></div>
+    <div class="card"><h4>💳 Débito registrado</h4><p class="stat-number">${formatearMoneda(totalDebito)}</p></div>
+    <div class="card"><h4>💰 Total dinero registrado</h4><p class="stat-number">${formatearMoneda(totalRegistrado)}</p></div>
+    <div class="card"><h4>💸 Retiros</h4><p class="stat-number">${formatearMoneda(totalRetiros)}</p></div>
+    <div class="card"><h4>📋 Turnos</h4><p class="stat-number">${cierresDia.length}</p></div></div>
+    <div class="info-box"><strong>👥 Empleados:</strong> ${empleadosDia.length?empleadosDia.join(', '):'Sin cierres registrados'}<br><strong>ℹ️ Importante:</strong> el efectivo corresponde al dinero físico contado en las cajas. Este resumen no representa ventas.</div>
+    ${cierresDia.length===0?'<p class="info-box">No hay cierres de turno registrados para este día operativo.</p>':''}`;
 }
 function obtenerCierresDelDiaOperativo(dia) {
     return cierres.filter(c => obtenerDiaOperativoRegistro(c) === dia);
@@ -3130,28 +3093,18 @@ function obtenerGastosDelDiaOperativo(dia) {
     return gastos.filter(g => (g.diaOperativo || g.fecha) === dia);
 }
 function cargarDashboardCierres() {
-    const dashboard = document.getElementById('dashboardCierres');
-    if (!dashboard) return;
-    if (cierres.length === 0) { dashboard.innerHTML = '<p class="info-box">No hay cierres</p>'; return; }
-    const hoy = obtenerDiaOperativo();
-    const cierresHoy = cierres.filter(c => obtenerDiaOperativoRegistro(c) === hoy);
-    const totalVentas = cierresHoy.reduce((sum, c) => sum + (c.totalVentas || 0), 0);
-    const totalEfectivo = cierresHoy.reduce((sum, c) => sum + (c.efectivo || 0), 0);
-    const totalCredito = cierresHoy.reduce((sum, c) => sum + (c.credito || 0), 0);
-    const totalDebito = cierresHoy.reduce((sum, c) => sum + (c.debito || 0), 0);
-    const totalRetiros = cierresHoy.reduce((sum, c) => sum + (c.totalRetiros || 0), 0);
-    const diferenciasPositivas = cierresHoy.filter(c => c.diferencia > 0);
-    const diferenciasNegativas = cierresHoy.filter(c => c.diferencia < 0);
-    dashboard.innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-            <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"><h3>📅 Cierres Hoy</h3><p class="stat-number">${cierresHoy.length}</p></div>
-            <div class="card" style="background: linear-gradient(135deg, #2ed573 0%, #1e9e54 100%);"><h3>💰 Total Ventas</h3><p class="stat-number">${formatearMoneda(totalVentas)}</p></div>
-            <div class="card" style="background: linear-gradient(135deg, #ffa502 0%, #ff6348 100%);"><h3>💵 Efectivo</h3><p class="stat-number">${formatearMoneda(totalEfectivo)}</p></div>
-            <div class="card" style="background: linear-gradient(135deg, #3742fa 0%, #2f3542 100%);"><h3>💳 Tarjetas</h3><p class="stat-number">${formatearMoneda(totalCredito + totalDebito)}</p></div>
-            <div class="card" style="background: linear-gradient(135deg, #ff4757 0%, #c44569 100%);"><h3>💸 Retiros</h3><p class="stat-number">${formatearMoneda(totalRetiros)}</p></div>
-            <div class="card" style="background: linear-gradient(135deg, #747d8c 0%, #2f3542 100%);"><h3>📊 Diferencias</h3><p style="font-size: 14px;">✅ ${diferenciasPositivas.length}<br>❌ ${diferenciasNegativas.length}</p></div>
-        </div>
-    `;
+    const dashboard=document.getElementById('dashboardCierres');if(!dashboard)return;
+    if(cierres.length===0){dashboard.innerHTML='<p class="info-box">No hay cierres</p>';return;}
+    const hoy=obtenerDiaOperativo(),cierresHoy=cierres.filter(c=>obtenerDiaOperativoRegistro(c)===hoy);
+    const totalEfectivo=cierresHoy.reduce((s,c)=>s+Number(c.efectivoFisico??c.efectivo??c.conteo??0),0),totalCredito=cierresHoy.reduce((s,c)=>s+Number(c.credito||0),0),totalDebito=cierresHoy.reduce((s,c)=>s+Number(c.debito||0),0);
+    const totalRegistrado=cierresHoy.reduce((s,c)=>s+Number(c.totalRegistrado??(Number(c.efectivoFisico??c.efectivo??c.conteo??0)+Number(c.credito||0)+Number(c.debito||0))),0),totalRetiros=cierresHoy.reduce((s,c)=>s+Number(c.totalRetiros||0),0);
+    dashboard.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;">
+    <div class="card"><h3>📅 Cierres Hoy</h3><p class="stat-number">${cierresHoy.length}</p></div>
+    <div class="card"><h3>💵 Efectivo físico contado</h3><p class="stat-number">${formatearMoneda(totalEfectivo)}</p></div>
+    <div class="card"><h3>💳 Tarjetas</h3><p class="stat-number">${formatearMoneda(totalCredito+totalDebito)}</p></div>
+    <div class="card"><h3>💰 Total dinero registrado</h3><p class="stat-number">${formatearMoneda(totalRegistrado)}</p></div>
+    <div class="card"><h3>💸 Retiros</h3><p class="stat-number">${formatearMoneda(totalRetiros)}</p></div></div>
+    <div class="info-box" style="margin-top:15px;">El efectivo mostrado es dinero físico contado en las cajas y no representa ventas en efectivo.</div>`;
 }
 function cargarTodosCierres() {
     const lista = document.getElementById('listaTodosCierres');
@@ -3390,75 +3343,28 @@ async function eliminarGasto(id) {
 
 // ========== FINANZAS ==========
 function cargarFinanzas() {
-    const periodo = document.getElementById('filtroFinanzasPeriodo').value;
-    const ahora = new Date();
-    const diaHoy = obtenerFechaISOOperativa(ahora);
-    let fechaInicioISO = diaHoy;
-    let fechaFinISO = diaHoy;
-
-    if (periodo === 'semana') {
-        const inicio = new Date(ahora);
-        inicio.setDate(inicio.getDate() - 6);
-        fechaInicioISO = obtenerFechaISOOperativa(inicio);
-        fechaFinISO = diaHoy;
-    } else if (periodo === 'mes') {
-        const inicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1, 12, 0, 0);
-        fechaInicioISO = obtenerFechaISOOperativa(inicio);
-        fechaFinISO = diaHoy;
-    } else if (periodo === 'personalizado') {
-        fechaInicioISO = document.getElementById('filtroFechaInicio').value;
-        fechaFinISO = document.getElementById('filtroFechaFin').value;
-        if (!fechaInicioISO || !fechaFinISO) {
-            ['finanzasIngresos','finanzasGastos','finanzasGanancia'].forEach(id => document.getElementById(id).textContent = '$0');
-            document.getElementById('finanzasIngresosDetalle').textContent = '';
-            document.getElementById('finanzasGastosDetalle').textContent = '';
-            document.getElementById('finanzasGananciaDetalle').textContent = '';
-            return;
-        }
-    }
-
-    const cierresPeriodo = cierres.filter(c => {
-        const d = normalizarFechaOperativaISO(obtenerDiaOperativoRegistro(c));
-        return d >= fechaInicioISO && d <= fechaFinISO;
-    });
-    const gastosPeriodo = gastos.filter(g => {
-        const d = normalizarFechaOperativaISO(g.diaOperativo || g.fecha || '');
-        return d >= fechaInicioISO && d <= fechaFinISO;
-    });
-
-    const totalIngresos = cierresPeriodo.reduce((sum, c) => sum + Number(c.totalVentas || 0), 0);
-    const totalGastos = gastosPeriodo.reduce((sum, g) => sum + Number(g.monto || 0), 0);
-    const ganancia = totalIngresos - totalGastos;
-    const totalEfectivo = cierresPeriodo.reduce((sum, c) => sum + Number(c.efectivo || 0), 0);
-    const totalCredito = cierresPeriodo.reduce((sum, c) => sum + Number(c.credito || 0), 0);
-    const totalDebito = cierresPeriodo.reduce((sum, c) => sum + Number(c.debito || 0), 0);
-    const totalRetiros = cierresPeriodo.reduce((sum, c) => sum + Number(c.totalRetiros || 0), 0);
-
-    document.getElementById('finanzasIngresos').textContent = formatearMoneda(totalIngresos);
-    document.getElementById('finanzasIngresosDetalle').textContent = `${cierresPeriodo.length} cierres de turno · ${fechaInicioISO} a ${fechaFinISO}`;
-    document.getElementById('finanzasGastos').textContent = formatearMoneda(totalGastos);
-    document.getElementById('finanzasGastosDetalle').textContent = `${gastosPeriodo.length} gastos`;
-    document.getElementById('finanzasGanancia').textContent = formatearMoneda(ganancia);
-    document.getElementById('finanzasGananciaDetalle').textContent = ganancia >= 0 ? '📈 Positiva' : '📉 Negativa';
-
-    const maxIngreso = Math.max(totalEfectivo, totalCredito, totalDebito, 1);
-    document.getElementById('desgloseIngresos').innerHTML = `
-        <div class="desglose-item"><span>💵 Efectivo</span><div class="barra"><div class="barra-relleno" style="width: ${(totalEfectivo / maxIngreso) * 100}%"></div></div><strong>${formatearMoneda(totalEfectivo)}</strong></div>
-        <div class="desglose-item"><span>💳 Crédito</span><div class="barra"><div class="barra-relleno" style="width: ${(totalCredito / maxIngreso) * 100}%"></div></div><strong>${formatearMoneda(totalCredito)}</strong></div>
-        <div class="desglose-item"><span>💳 Débito</span><div class="barra"><div class="barra-relleno" style="width: ${(totalDebito / maxIngreso) * 100}%"></div></div><strong>${formatearMoneda(totalDebito)}</strong></div>
-        <div class="info-box" style="margin-top:10px;"><strong>💸 Retiros:</strong> ${formatearMoneda(totalRetiros)}</div>
-    `;
-
-    const gastosPorCategoria = {};
-    gastosPeriodo.forEach(g => { gastosPorCategoria[g.categoria] = (gastosPorCategoria[g.categoria] || 0) + (g.monto || 0); });
-    const maxGasto = Math.max(...Object.values(gastosPorCategoria), 1);
-    let gastosHtml = '';
-    Object.keys(gastosPorCategoria).sort((a,b) => gastosPorCategoria[b] - gastosPorCategoria[a]).forEach(cat => {
-        gastosHtml += `<div class="desglose-item"><span>${CATEGORIAS_GASTOS[cat] || cat}</span><div class="barra"><div class="barra-relleno" style="width:${(gastosPorCategoria[cat] / maxGasto) * 100}%;background:linear-gradient(135deg,#ff4757 0%,#c44569 100%);"></div></div><strong>${formatearMoneda(gastosPorCategoria[cat])}</strong></div>`;
-    });
-    document.getElementById('desgloseGastos').innerHTML = gastosHtml || '<p class="info-box">No hay gastos</p>';
-
-    cargarReporteDescuentos();
+    const periodo=document.getElementById('filtroFinanzasPeriodo').value,ahora=new Date(),diaHoy=obtenerFechaISOOperativa(ahora);
+    let fechaInicioISO=diaHoy,fechaFinISO=diaHoy;
+    if(periodo==='semana'){const inicio=new Date(ahora);inicio.setDate(inicio.getDate()-6);fechaInicioISO=obtenerFechaISOOperativa(inicio);}
+    else if(periodo==='mes'){const inicio=new Date(ahora.getFullYear(),ahora.getMonth(),1,12,0,0);fechaInicioISO=obtenerFechaISOOperativa(inicio);}
+    else if(periodo==='personalizado'){fechaInicioISO=document.getElementById('filtroFechaInicio').value;fechaFinISO=document.getElementById('filtroFechaFin').value;if(!fechaInicioISO||!fechaFinISO)return;}
+    const ventasPeriodo=ventasSmartFran.filter(v=>{const d=normalizarFechaOperativaISO(v.diaOperativo||v.fecha||'');return d>=fechaInicioISO&&d<=fechaFinISO;});
+    const cierresPeriodo=cierres.filter(c=>{const d=normalizarFechaOperativaISO(obtenerDiaOperativoRegistro(c));return d>=fechaInicioISO&&d<=fechaFinISO;});
+    const gastosPeriodo=gastos.filter(g=>{const d=normalizarFechaOperativaISO(g.diaOperativo||g.fecha||'');return d>=fechaInicioISO&&d<=fechaFinISO;});
+    const totalIngresos=ventasPeriodo.reduce((s,v)=>s+Number(v.total||0),0),totalGastos=gastosPeriodo.reduce((s,g)=>s+Number(g.monto||0),0),resultado=totalIngresos-totalGastos;
+    const totalEfectivo=cierresPeriodo.reduce((s,c)=>s+Number(c.efectivoFisico??c.efectivo??c.conteo??0),0),totalCredito=ventasPeriodo.reduce((s,v)=>s+Number(v.credito||0),0),totalDebito=ventasPeriodo.reduce((s,v)=>s+Number(v.debito||0),0);
+    const totalRegistradoCierres=cierresPeriodo.reduce((s,c)=>s+Number(c.totalRegistrado??(Number(c.efectivoFisico??c.efectivo??c.conteo??0)+Number(c.credito||0)+Number(c.debito||0))),0),totalRetiros=cierresPeriodo.reduce((s,c)=>s+Number(c.totalRetiros||0),0);
+    document.getElementById('finanzasIngresos').textContent=formatearMoneda(totalIngresos);document.getElementById('finanzasIngresosDetalle').textContent=ventasPeriodo.length?`${ventasPeriodo.length} registros SmartFran · ${fechaInicioISO} a ${fechaFinISO}`:'Sin ventas de SmartFran importadas para este período';
+    document.getElementById('finanzasGastos').textContent=formatearMoneda(totalGastos);document.getElementById('finanzasGastosDetalle').textContent=`${gastosPeriodo.length} gastos`;
+    document.getElementById('finanzasGanancia').textContent=formatearMoneda(resultado);document.getElementById('finanzasGananciaDetalle').textContent='Ventas SmartFran menos gastos';
+    const maxIngreso=Math.max(totalEfectivo,totalCredito,totalDebito,1);
+    document.getElementById('desgloseIngresos').innerHTML=`<div class="desglose-item"><span>💵 Efectivo físico contado</span><div class="barra"><div class="barra-relleno" style="width:${(totalEfectivo/maxIngreso)*100}%"></div></div><strong>${formatearMoneda(totalEfectivo)}</strong></div>
+    <div class="desglose-item"><span>💳 Crédito según SmartFran</span><div class="barra"><div class="barra-relleno" style="width:${(totalCredito/maxIngreso)*100}%"></div></div><strong>${formatearMoneda(totalCredito)}</strong></div>
+    <div class="desglose-item"><span>💳 Débito según SmartFran</span><div class="barra"><div class="barra-relleno" style="width:${(totalDebito/maxIngreso)*100}%"></div></div><strong>${formatearMoneda(totalDebito)}</strong></div>
+    <div class="info-box" style="margin-top:10px;"><strong>💰 Total dinero registrado en cierres:</strong> ${formatearMoneda(totalRegistradoCierres)}<br><strong>💸 Retiros:</strong> ${formatearMoneda(totalRetiros)}<br><small>El efectivo de los cierres es dinero físico contado en caja; no se considera venta en efectivo.</small></div>`;
+    const gastosPorCategoria={};gastosPeriodo.forEach(g=>{gastosPorCategoria[g.categoria]=(gastosPorCategoria[g.categoria]||0)+Number(g.monto||0);});const maxGasto=Math.max(...Object.values(gastosPorCategoria),1);let gastosHtml='';
+    Object.keys(gastosPorCategoria).sort((a,b)=>gastosPorCategoria[b]-gastosPorCategoria[a]).forEach(cat=>{gastosHtml+=`<div class="desglose-item"><span>${CATEGORIAS_GASTOS[cat]||cat}</span><div class="barra"><div class="barra-relleno" style="width:${(gastosPorCategoria[cat]/maxGasto)*100}%;background:linear-gradient(135deg,#ff4757 0%,#c44569 100%);"></div></div><strong>${formatearMoneda(gastosPorCategoria[cat])}</strong></div>`;});
+    document.getElementById('desgloseGastos').innerHTML=gastosHtml||'<p class="info-box">No hay gastos</p>';cargarReporteDescuentos();
 }
 function cargarReporteDescuentos() {
     const totalDescuentos = productos.reduce((sum, prod) => {
@@ -3542,6 +3448,15 @@ function cargarProductosRentables() {
     });
     contenedor.innerHTML = html;
 }
+
+// ========== IMPORTAR VENTAS SMARTFRAN ==========
+function normalizarEncabezadoFinanzas(texto){return String(texto||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');}
+function numeroExcelFinanzas(valor){return typeof valor==='number'?valor:parsearNumeroArgentino(valor);}
+function fechaExcelFinanzas(valor){if(valor instanceof Date&&!isNaN(valor))return obtenerFechaISOOperativa(valor);if(typeof valor==='number'&&window.XLSX&&XLSX.SSF){const d=XLSX.SSF.parse_date_code(valor);if(d)return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}const t=String(valor||'').trim();if(/^\d{4}-\d{2}-\d{2}$/.test(t))return t;const p=t.split(/[\/.\-]/).map(Number);if(p.length===3&&p.every(n=>!isNaN(n))){let dia,mes,año;if(p[0]>31){año=p[0];mes=p[1];dia=p[2];}else{dia=p[0];mes=p[1];año=p[2];}if(año<100)año+=2000;if(año>1900&&mes>=1&&mes<=12&&dia>=1&&dia<=31)return `${año}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;}return '';}
+function obtenerValorColumnaFinanzas(fila,alias){const k=Object.keys(fila).find(x=>normalizarEncabezadoFinanzas(x)===alias);return k?fila[k]:'';}
+function procesarExcelFinanzas(event){const archivo=event.target.files&&event.target.files[0];if(!archivo)return;if(!window.XLSX){alert('No se pudo cargar el lector de Excel.');return;}const lector=new FileReader();lector.onload=function(e){try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true}),ws=wb.Sheets[wb.SheetNames[0]],filas=XLSX.utils.sheet_to_json(ws,{defval:''});if(!filas.length){alert('El Excel no contiene filas de datos.');return;}const registros=filas.map((fila,index)=>{const fecha=fechaExcelFinanzas(obtenerValorColumnaFinanzas(fila,'fecha')||obtenerValorColumnaFinanzas(fila,'fechaventa')||obtenerValorColumnaFinanzas(fila,'dia'));let efectivo=numeroExcelFinanzas(obtenerValorColumnaFinanzas(fila,'efectivo')),credito=numeroExcelFinanzas(obtenerValorColumnaFinanzas(fila,'credito')||obtenerValorColumnaFinanzas(fila,'tarjetacredito')),debito=numeroExcelFinanzas(obtenerValorColumnaFinanzas(fila,'debito')||obtenerValorColumnaFinanzas(fila,'tarjetadebito')),total=numeroExcelFinanzas(obtenerValorColumnaFinanzas(fila,'totalventas')||obtenerValorColumnaFinanzas(fila,'total')||obtenerValorColumnaFinanzas(fila,'importe')||obtenerValorColumnaFinanzas(fila,'monto'));const forma=String(obtenerValorColumnaFinanzas(fila,'formadepago')||obtenerValorColumnaFinanzas(fila,'formapago')||'').toLowerCase(),importe=numeroExcelFinanzas(obtenerValorColumnaFinanzas(fila,'importe')||obtenerValorColumnaFinanzas(fila,'monto'));if(forma&&importe&&!efectivo&&!credito&&!debito){if(forma.includes('efect'))efectivo=importe;else if(forma.includes('deb'))debito=importe;else if(forma.includes('cred'))credito=importe;}if(!total)total=efectivo+credito+debito;return{fecha,diaOperativo:fecha,turno:obtenerValorColumnaFinanzas(fila,'turno')||obtenerValorColumnaFinanzas(fila,'numeroturno')||'',total,efectivo,credito,debito,filaExcel:index+2};}).filter(r=>r.fecha&&(r.total||r.efectivo||r.credito||r.debito));if(!registros.length){alert('No pude encontrar fechas y montos reconocibles en el Excel. Revisá que tenga columnas de fecha y monto/total.');return;}window.ventasSmartFranPendientes=registros;const resumen=registros.reduce((s,r)=>({total:s.total+r.total,efectivo:s.efectivo+r.efectivo,credito:s.credito+r.credito,debito:s.debito+r.debito}),{total:0,efectivo:0,credito:0,debito:0});document.getElementById('tablaPreviaVentasSmartFran').innerHTML=`<p><strong>Registros detectados:</strong> ${registros.length}</p><p>💰 Total: ${formatearMoneda(resumen.total)} · 💵 Efectivo: ${formatearMoneda(resumen.efectivo)} · 💳 Crédito: ${formatearMoneda(resumen.credito)} · 💳 Débito: ${formatearMoneda(resumen.debito)}</p>`;document.getElementById('vistaPreviaVentasSmartFran').style.display='block';}catch(error){console.error(error);alert('No se pudo leer el Excel.');}};lector.readAsArrayBuffer(archivo);}
+async function confirmarImportacionVentasSmartFran(){const registros=window.ventasSmartFranPendientes||[];if(!registros.length)return;try{const loteId='SF-'+Date.now(),batch=db.batch();registros.forEach(registro=>{const ref=db.collection('ventasSmartFran').doc();batch.set(ref,{...registro,loteId,archivoOrigen:document.getElementById('archivoExcelFinanzas').files?.[0]?.name||'Excel SmartFran',importadoEn:new Date(),importadoPor:empleadoActual?empleadoActual.nombre:'Admin'});});await batch.commit();window.ventasSmartFranPendientes=[];document.getElementById('vistaPreviaVentasSmartFran').style.display='none';document.getElementById('archivoExcelFinanzas').value='';await cargarDatosIniciales();cargarFinanzas();alert('✅ Ventas de SmartFran importadas');}catch(error){console.error(error);alert('Error al importar las ventas de SmartFran.');}}
+function cancelarImportacionVentasSmartFran(){window.ventasSmartFranPendientes=[];const v=document.getElementById('vistaPreviaVentasSmartFran');if(v)v.style.display='none';const f=document.getElementById('archivoExcelFinanzas');if(f)f.value='';}
 
 // ========== EXPORTAR ==========
 function exportarFinanzasPDF() {
@@ -4709,7 +4624,7 @@ async function exportarDatos() {
             tareas: [], tareasCompletadas: {}, eventos: [], 
             historialConteos: [], pedidosCamara: [], movimientosCamara: [], 
             cierres: [], cajas: [], gastos: [], avisos: [], 
-            fichajes: [], turnos: [], consumos: [] 
+            fichajes: [], turnos: [], consumos: [], ventasSmartFran: [] 
         };
         const productosSnap = await db.collection('productos').get(); backup.productos = productosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const empleadosSnap = await db.collection('empleados').get(); backup.empleados = empleadosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -4728,6 +4643,7 @@ async function exportarDatos() {
         const fichajesSnap = await db.collection('fichajes').get(); backup.fichajes = fichajesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const turnosSnap = await db.collection('turnos').get(); backup.turnos = turnosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const consumosSnap = await db.collection('consumos').get(); backup.consumos = consumosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const ventasSmartFranSnap = await db.collection('ventasSmartFran').get(); backup.ventasSmartFran = ventasSmartFranSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const json = JSON.stringify(backup, null, 2);
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -4767,6 +4683,7 @@ async function importarDatos() {
         if (backup.fichajes) for (const fichaje of backup.fichajes) { const { id, ...data } = fichaje; await db.collection('fichajes').doc(id).set(data); }
         if (backup.turnos) for (const turno of backup.turnos) { const { id, ...data } = turno; await db.collection('turnos').doc(id).set(data); }
         if (backup.consumos) for (const consumo of backup.consumos) { const { id, ...data } = consumo; await db.collection('consumos').doc(id).set(data); }
+        if (backup.ventasSmartFran) for (const venta of backup.ventasSmartFran) { const { id, ...data } = venta; await db.collection('ventasSmartFran').doc(id).set(data); }
         await db.collection('config').doc('stock').set({ data: backup.stock || {} });
         await db.collection('config').doc('stockCamara').set({ data: backup.stockCamara || {} });
         await db.collection('config').doc('notasConteo').set({ data: backup.notasConteo || {} });
