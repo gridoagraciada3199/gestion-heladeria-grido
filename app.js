@@ -1675,6 +1675,28 @@ function formatearHorasSegundos(segundos) {
     return `${Math.floor(totalMinutos / 60)}h ${totalMinutos % 60}m`;
 }
 
+function obtenerUltimaMarcaFichaje(registros) {
+    if (!registros || registros.length === 0) return null;
+
+    return registros
+        .filter(r => obtenerTimestampFichaje(r))
+        .sort((a, b) => (obtenerTimestampFichaje(b)?.getTime() || 0) - (obtenerTimestampFichaje(a)?.getTime() || 0))[0] || null;
+}
+
+function obtenerEtiquetaMarcaFichaje(marca) {
+    if (!marca) return { icono: '⚪', texto: 'Sin marcas' };
+
+    const accion = marca.accion || (marca.tipo === 'entrada' ? 'inicioTurno' : marca.tipo === 'salida' ? 'finTurno' : '');
+    const etiquetas = {
+        inicioTurno: { icono: '🟢', texto: 'INICIO DE TURNO' },
+        inicioDescanso: { icono: '🟡', texto: 'INICIO DE DESCANSO' },
+        finDescanso: { icono: '🔵', texto: 'FIN DE DESCANSO' },
+        finTurno: { icono: '🔴', texto: 'FIN DE TURNO' }
+    };
+
+    return etiquetas[accion] || { icono: '⚪', texto: accion ? accion.toUpperCase() : 'MARCA' };
+}
+
 function cargarFichaje() {
     const contenedor = document.getElementById('fichajeContenido');
     if (!contenedor) return;
@@ -1748,15 +1770,28 @@ function cargarFichaje() {
             </button>`;
         });
 
+        const registrosOperativos = registrosEmpleado.filter(r => {
+            const marca = obtenerTimestampFichaje(r);
+            return marca && obtenerFechaISOOperativa(marca) === obtenerFechaISOOperativa(ahora);
+        });
+        const ultimaMarca = obtenerUltimaMarcaFichaje(registrosOperativos);
+
         if (!jornadaActiva) {
-            html += `<div class="fichaje-estado" id="estadoFichaje">⚪ Seleccioná un turno y comenzá tu jornada</div>
-                <button class="btn-fichaje btn-entrada" id="btnFichajePrincipal" onclick="marcarFichaje('inicioTurno')" disabled style="opacity: 0.5;">▶️ INICIAR TURNO</button>`;
+            if (ultimaMarca) {
+                const etiquetaUltima = obtenerEtiquetaMarcaFichaje(ultimaMarca);
+                html += `<div class="fichaje-turno-info">${etiquetaUltima.icono} <strong>${etiquetaUltima.texto}</strong> a las <strong>${ultimaMarca.hora}</strong></div>`;
+            } else {
+                html += `<div class="fichaje-estado" id="estadoFichaje">⚪ Seleccioná un turno y comenzá tu jornada</div>`;
+            }
+            html += `<button class="btn-fichaje btn-entrada" id="btnFichajePrincipal" onclick="marcarFichaje('inicioTurno')" disabled style="opacity: 0.5;">▶️ INICIAR TURNO</button>`;
         } else {
             const descansoActivo = tieneDescansoActivo(jornadaActiva);
             const descansoYaFinalizado = jornadaActiva.registros.some(r => r.accion === 'finDescanso');
 
-            const inicioHora = jornadaActiva.inicio.hora;
-            html += `<div class="fichaje-turno-info">🟢 Turno iniciado a las <strong>${inicioHora}</strong> · ${jornadaActiva.turnoNombre || ''}</div>`;
+            const ultimaMarcaJornada = obtenerUltimaMarcaFichaje(jornadaActiva.registros);
+            const etiquetaUltima = obtenerEtiquetaMarcaFichaje(ultimaMarcaJornada);
+            html += `<div class="fichaje-turno-info">${etiquetaUltima.icono} <strong>${etiquetaUltima.texto}</strong> a las <strong>${ultimaMarcaJornada?.hora || '-'}</strong> · ${jornadaActiva.turnoNombre || ''}</div>`;
+
             if (descansoActivo) {
                 html += `<button class="btn-fichaje btn-descanso" onclick="marcarFichaje('finDescanso')">▶️ FINALIZAR DESCANSO</button>`;
             } else if (descansoYaFinalizado) {
