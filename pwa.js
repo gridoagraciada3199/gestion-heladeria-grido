@@ -127,3 +127,11 @@ function crearBotonActualizarApp() {
 window.addEventListener("load", () => {
   crearBotonActualizarApp();
 });
+
+
+// Carga la corrección de cierres después de app.js.
+window.addEventListener("load", () => {
+  const script = document.createElement("script");
+  script.src = "cierres-fix.js?v=1";
+  document.head.appendChild(script);
+});
