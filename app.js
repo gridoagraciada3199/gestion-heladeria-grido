@@ -1640,10 +1640,34 @@ function calcularJornada(jornada) {
 }
 
 function obtenerJornadaActivaEmpleado(empleadoId) {
+    const diaOperativoActual = obtenerFechaISOOperativa(new Date());
     const jornadas = obtenerJornadasFichajes(fichajes.filter(f => f.empleadoId === empleadoId));
+
     return jornadas
-        .filter(j => j.inicio && !j.fin)
+        .filter(j => {
+            if (!j.inicio || j.fin) return false;
+            const fechaInicio = obtenerTimestampFichaje(j.inicio);
+            if (!fechaInicio) return false;
+
+            // Una jornada abierta solo puede seguir activa dentro de su mismo día operativo.
+            // Así una marca olvidada de ayer no bloquea el inicio de hoy.
+            return obtenerFechaISOOperativa(fechaInicio) === diaOperativoActual;
+        })
         .sort((a,b) => (obtenerTimestampFichaje(b.inicio)?.getTime() || 0) - (obtenerTimestampFichaje(a.inicio)?.getTime() || 0))[0] || null;
+}
+
+function tieneDescansoActivo(jornada) {
+    if (!jornada) return false;
+
+    const ultimoInicio = jornada.registros
+        .filter(r => r.accion === 'inicioDescanso')
+        .sort((a,b) => (obtenerTimestampFichaje(b)?.getTime() || 0) - (obtenerTimestampFichaje(a)?.getTime() || 0))[0];
+
+    const ultimoFin = jornada.registros
+        .filter(r => r.accion === 'finDescanso')
+        .sort((a,b) => (obtenerTimestampFichaje(b)?.getTime() || 0) - (obtenerTimestampFichaje(a)?.getTime() || 0))[0];
+
+    return !!ultimoInicio && (!ultimoFin || obtenerTimestampFichaje(ultimoInicio) > obtenerTimestampFichaje(ultimoFin));
 }
 
 function formatearHorasSegundos(segundos) {
@@ -1728,14 +1752,16 @@ function cargarFichaje() {
             html += `<div class="fichaje-estado" id="estadoFichaje">⚪ Seleccioná un turno y comenzá tu jornada</div>
                 <button class="btn-fichaje btn-entrada" id="btnFichajePrincipal" onclick="marcarFichaje('inicioTurno')" disabled style="opacity: 0.5;">▶️ INICIAR TURNO</button>`;
         } else {
-            const tieneDescansoActivo = jornadaActiva.registros.some(r => r.accion === 'inicioDescanso') &&
-                !jornadaActiva.registros.some(r => r.accion === 'finDescanso' &&
-                    (obtenerTimestampFichaje(r)?.getTime() || 0) > (obtenerTimestampFichaje(jornadaActiva.registros.find(x => x.accion === 'inicioDescanso'))?.getTime() || 0));
+            const descansoActivo = tieneDescansoActivo(jornadaActiva);
+            const descansoYaFinalizado = jornadaActiva.registros.some(r => r.accion === 'finDescanso');
 
             const inicioHora = jornadaActiva.inicio.hora;
             html += `<div class="fichaje-turno-info">🟢 Turno iniciado a las <strong>${inicioHora}</strong> · ${jornadaActiva.turnoNombre || ''}</div>`;
-            if (tieneDescansoActivo) {
+            if (descansoActivo) {
                 html += `<button class="btn-fichaje btn-descanso" onclick="marcarFichaje('finDescanso')">▶️ FINALIZAR DESCANSO</button>`;
+            } else if (descansoYaFinalizado) {
+                // Hay un solo descanso por turno: una vez terminado, queda únicamente finalizar turno.
+                html += `<button class="btn-fichaje btn-salida" onclick="marcarFichaje('finTurno')">⏹️ TERMINAR TURNO</button>`;
             } else {
                 html += `<button class="btn-fichaje btn-descanso" onclick="marcarFichaje('inicioDescanso')">☕ INICIAR DESCANSO</button>
                     <button class="btn-fichaje btn-salida" onclick="marcarFichaje('finTurno')">⏹️ TERMINAR TURNO</button>`;
