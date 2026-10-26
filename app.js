@@ -289,11 +289,12 @@ function iniciarSincronizacionEnVivo() {
     const unsubStock = db.collection('config').doc('stock').onSnapshot(doc => {
         stock = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
-        if (tabActiva && (tabActiva.id === 'dashboard' || tabActiva.id === 'conteo' || tabActiva.id === 'camara' || tabActiva.id === 'gestion')) {
+        if (tabActiva && (tabActiva.id === 'dashboard' || tabActiva.id === 'conteo' || tabActiva.id === 'camara' || tabActiva.id === 'gestion' || tabActiva.id === 'reposicion')) {
             if (tabActiva.id === 'dashboard') cargarDashboard();
             if (tabActiva.id === 'conteo') cargarConteo();
             if (tabActiva.id === 'camara') cargarCamara();
             if (tabActiva.id === 'gestion') cargarListaProductos();
+            if (tabActiva.id === 'reposicion') cargarReposicion();
         }
     });
     listenersEnVivo.push(unsubStock);
@@ -950,6 +951,10 @@ function mostrarApp() {
 
 function configurarNavegacion() {
     const navTabs = document.getElementById('navTabs');
+    if (modoActual === 'admin' && !document.getElementById('reposicion')) {
+        const main = document.querySelector('main.main-content');
+        if (main) main.insertAdjacentHTML('beforeend', '<section id="reposicion" class="tab-content"><h2>🛒 Productos para reponer <span style="font-size:14px;color:#b45309;">(<span id="contadorReposicion">0</span>)</span></h2><p class="info-box">Se muestran productos cuyo stock total en la heladería llegó a la mitad o menos de la cantidad que había al recibir el último pedido registrado. La referencia se actualiza cuando cargás un nuevo ingreso.</p><div id="listaProductosReposicion"></div></section>');
+    }
     if (modoActual === 'empleado') {
         navTabs.innerHTML = `
             <div class="nav-categoria abierto">
@@ -1006,6 +1011,7 @@ function configurarNavegacion() {
                     <button class="nav-btn" data-tab="conteo">📦 Conteo</button>
                     <button class="nav-btn" data-tab="dashboard">📈 Stock</button>
                     <button class="nav-btn" data-tab="historial">📜 Historial</button>
+                    <button class="nav-btn" data-tab="reposicion">🛒 Productos para reponer</button>
                 </div>
             </div>
             <div class="nav-categoria">
