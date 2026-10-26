@@ -302,10 +302,7 @@ function iniciarSincronizacionEnVivo() {
     const unsubReferenciasReposicion = db.collection('config').doc('referenciasReposicion').onSnapshot(doc => {
         referenciasReposicion = doc.exists ? (doc.data().data || {}) : {};
         const tabActiva = document.querySelector('.tab-content.active');
-        if (tabActiva && (tabActiva.id === 'conteo' || tabActiva.id === 'reposicion' || tabActiva.id === 'gestion')) {
-            if (tabActiva.id === 'conteo') cargarConteo();
-            if (tabActiva.id === 'reposicion') cargarReposicion();
-        }
+        if (tabActiva && tabActiva.id === 'reposicion') cargarReposicion();
     });
     listenersEnVivo.push(unsubReferenciasReposicion);
 
