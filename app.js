@@ -882,6 +882,7 @@ async function borrarTodoPrueba() {
         }
         await db.collection('config').doc('stock').set({ data: {} });
         await db.collection('config').doc('stockCamara').set({ data: {} });
+        await db.collection('config').doc('referenciasReposicion').set({ data: {} });
         await db.collection('config').doc('notasConteo').set({ data: {} });
         await db.collection('config').doc('tareasCompletadas').set({ data: {} });
         await db.collection('config').doc('ultimoDia').set({ fecha: '' });
@@ -4743,7 +4744,7 @@ async function exportarDatos() {
         const backup = { 
             fecha: new Date().toLocaleString('es-ES'), 
             version: '4.4', 
-            productos: [], empleados: [], stock: {}, stockCamara: {}, notasConteo: {}, 
+            productos: [], empleados: [], stock: {}, stockCamara: {}, referenciasReposicion: {}, notasConteo: {}, 
             tareas: [], tareasCompletadas: {}, eventos: [], 
             historialConteos: [], pedidosCamara: [], movimientosCamara: [], 
             cierres: [], cajas: [], gastos: [], avisos: [], 
@@ -4753,6 +4754,7 @@ async function exportarDatos() {
         const empleadosSnap = await db.collection('empleados').get(); backup.empleados = empleadosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const stockDoc = await db.collection('config').doc('stock').get(); backup.stock = stockDoc.exists ? stockDoc.data().data : {};
         const stockCamaraDoc = await db.collection('config').doc('stockCamara').get(); backup.stockCamara = stockCamaraDoc.exists ? stockCamaraDoc.data().data : {};
+        const referenciasReposicionDoc = await db.collection('config').doc('referenciasReposicion').get(); backup.referenciasReposicion = referenciasReposicionDoc.exists ? referenciasReposicionDoc.data().data : {};
         const tareasSnap = await db.collection('tareas').get(); backup.tareas = tareasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tareasCompDoc = await db.collection('config').doc('tareasCompletadas').get(); backup.tareasCompletadas = tareasCompDoc.exists ? tareasCompDoc.data().data : {};
         const eventosSnap = await db.collection('eventos').get(); backup.eventos = eventosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -4809,6 +4811,7 @@ async function importarDatos() {
         if (backup.ventasSmartFran) for (const venta of backup.ventasSmartFran) { const { id, ...data } = venta; await db.collection('ventasSmartFran').doc(id).set(data); }
         await db.collection('config').doc('stock').set({ data: backup.stock || {} });
         await db.collection('config').doc('stockCamara').set({ data: backup.stockCamara || {} });
+        await db.collection('config').doc('referenciasReposicion').set({ data: backup.referenciasReposicion || {} });
         await db.collection('config').doc('notasConteo').set({ data: backup.notasConteo || {} });
         await db.collection('config').doc('tareasCompletadas').set({ data: backup.tareasCompletadas || {} });
         alert('✅ Restaurado. Recargando...');
