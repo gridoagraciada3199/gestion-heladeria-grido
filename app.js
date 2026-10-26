@@ -298,6 +298,16 @@ function iniciarSincronizacionEnVivo() {
     });
     listenersEnVivo.push(unsubStock);
     
+    const unsubReferenciasReposicion = db.collection('config').doc('referenciasReposicion').onSnapshot(doc => {
+        referenciasReposicion = doc.exists ? (doc.data().data || {}) : {};
+        const tabActiva = document.querySelector('.tab-content.active');
+        if (tabActiva && (tabActiva.id === 'conteo' || tabActiva.id === 'reposicion' || tabActiva.id === 'gestion')) {
+            if (tabActiva.id === 'conteo') cargarConteo();
+            if (tabActiva.id === 'reposicion') cargarReposicion();
+        }
+    });
+    listenersEnVivo.push(unsubReferenciasReposicion);
+
     const unsubStockCamara = db.collection('config').doc('stockCamara').onSnapshot(doc => {
         stockCamara = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
@@ -517,6 +527,7 @@ let productos = [];
 let empleados = [];
 let stock = {};
 let stockCamara = {};
+let referenciasReposicion = {};
 let notasConteo = {};
 let notasPedidos = {};
 let pedidoFormData = {};
@@ -568,6 +579,8 @@ async function cargarDatosIniciales() {
         stock = stockDoc.exists ? stockDoc.data().data : {};
         const stockCamaraDoc = await db.collection('config').doc('stockCamara').get();
         stockCamara = stockCamaraDoc.exists ? stockCamaraDoc.data().data : {};
+        const referenciasReposicionDoc = await db.collection('config').doc('referenciasReposicion').get();
+        referenciasReposicion = referenciasReposicionDoc.exists ? (referenciasReposicionDoc.data().data || {}) : {};
         const notasConteoDoc = await db.collection('config').doc('notasConteo').get();
         notasConteo = notasConteoDoc.exists ? (notasConteoDoc.data().data || {}) : {};
         const notasPedidosDoc = await db.collection('config').doc('notasPedidos').get();
@@ -1030,6 +1043,7 @@ function actualizarFecha() {
 }
 
 function cambiarTab(tab) {
+    if (tab === 'reposicion' && modoActual !== 'admin') return;
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(tab).classList.add('active');
@@ -1044,7 +1058,8 @@ function cambiarTab(tab) {
     if (tab === 'caja') cargarCaja();
     if (tab === 'gastos') cargarGastos();
     if (tab === 'finanzas') cargarFinanzas();
-    if (tab === 'conteo') actualizarBarraProgreso();
+    if (tab === 'conteo') { actualizarBarraProgreso(); cargarConteo(); }
+    if (tab === 'reposicion') cargarReposicion();
     if (tab === 'fichaje') cargarFichaje();
     if (tab === 'consumo') cargarConsumo();
 }
@@ -3588,6 +3603,36 @@ function obtenerDatosFinanzas() {
 }
 
 // ========== CONTEO ==========
+function obtenerEstadoReposicion(prodId) {
+    const referencia = referenciasReposicion[prodId];
+    if (!referencia || !Number.isFinite(Number(referencia.stockReferencia)) || Number(referencia.stockReferencia) <= 0) return null;
+    const stockActual = Number(stock[prodId] || 0);
+    const stockReferencia = Number(referencia.stockReferencia);
+    return { stockActual, stockReferencia, cantidadUltimoPedido: Number(referencia.cantidadUltimoPedido || 0), fecha: referencia.fecha || '', necesitaReposicion: stockActual <= stockReferencia / 2 };
+}
+
+function cargarReposicion() {
+    const contenedor = document.getElementById('listaProductosReposicion');
+    if (!contenedor) return;
+    const pendientes = productos.map(prod => ({ producto: prod, estado: obtenerEstadoReposicion(prod.id) }))
+        .filter(item => item.estado && item.estado.necesitaReposicion)
+        .sort((a, b) => (a.estado.stockActual / a.estado.stockReferencia) - (b.estado.stockActual / b.estado.stockReferencia));
+    const contador = document.getElementById('contadorReposicion');
+    if (contador) contador.textContent = String(pendientes.length);
+    if (!pendientes.length) {
+        contenedor.innerHTML = '<p class="info-box">✅ No hay productos que hayan alcanzado el umbral de reposición.</p>';
+        return;
+    }
+    contenedor.innerHTML = pendientes.map(({ producto, estado }) => {
+        const nombre = String(producto.nombre || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const fecha = estado.fecha ? new Date(estado.fecha).toLocaleDateString('es-UY') : 'No disponible';
+        return '<div class="list-item" style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;">' +
+            '<div><h4>⚠️ ' + nombre + '</h4><p>Stock actual: <strong>' + estado.stockActual + '</strong> · Referencia al recibir: <strong>' + estado.stockReferencia + '</strong></p>' +
+            '<p style="font-size:13px;color:#666;">Último ingreso: ' + estado.cantidadUltimoPedido + ' · Umbral: ' + (estado.stockReferencia / 2) + ' o menos · Fecha: ' + fecha + '</p></div>' +
+            '<span class="badge-estado sin-revisar">Poco stock</span></div></div>';
+    }).join('');
+}
+
 function cargarConteo() {
     const contenedor = document.getElementById('contenedorConteo');
     if (productos.length === 0) { 
@@ -3622,6 +3667,7 @@ function cargarConteo() {
                             <div class="conteo-info">
                                 <h4>${prod.nombre}</h4>
                                 <p class="stock-actual">Stock actual: ${stockActual}</p>
+                                ${(() => { const estadoReposicion = obtenerEstadoReposicion(prod.id); return estadoReposicion && estadoReposicion.necesitaReposicion ? '<p style="margin-top:5px;color:#b45309;font-size:12px;font-weight:700;">⚠️ Poco stock · Considerar reponer</p>' : ''; })()}
                             </div>
                             <span class="badge-estado sin-revisar" id="badge-${prod.id}">Sin revisar</span>
                         </div>
@@ -4286,7 +4332,7 @@ function mostrarFormularioPedido() {
         document.getElementById('formularioPedido').style.display = 'block';
         return;
     }
-    contenedor.innerHTML = '<input type="text" id="buscarProductoPedido" placeholder="🔎 Buscar producto..." oninput="filtrarProductosPedido()" style="width:100%;margin-bottom:12px;"><div id="listaProductosPedido"></div>';
+    contenedor.innerHTML = '<div id="sugerenciasReposicionPedido"></div><input type="text" id="buscarProductoPedido" placeholder="🔎 Buscar producto..." oninput="filtrarProductosPedido()" style="width:100%;margin-bottom:12px;"><div id="listaProductosPedido"></div>';
     renderProductosPedido();
     document.getElementById('formularioPedido').style.display = 'block';
 }
@@ -4321,6 +4367,11 @@ function renderProductosPedido() {
     if (!lista) return;
 
     capturarDatosPedidoForm();
+    const sugerencias = document.getElementById('sugerenciasReposicionPedido');
+    if (sugerencias) {
+        const pendientes = productos.filter(prod => { const estado = obtenerEstadoReposicion(prod.id); return estado && estado.necesitaReposicion; });
+        sugerencias.innerHTML = pendientes.length ? '<div class="info-box" style="margin-bottom:12px;"><strong>🛒 Sugerencias para este pedido</strong><p style="margin-top:5px;">' + pendientes.map(prod => String(prod.nombre).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join(' · ') + '</p></div>' : '';
+    }
 
     if (!productos.length) {
         lista.innerHTML = '<p class="info-box">No hay productos.</p>';
@@ -4380,7 +4431,9 @@ async function guardarPedido() {
         capturarDatosPedidoForm();
 
         const notasActualizadas = { ...notasPedidos };
+        const referenciasActualizadas = { ...referenciasReposicion };
         let productosCargados = 0;
+        const fechaIngreso = new Date().toISOString();
 
         productos.forEach(prod => {
             const estado = pedidoFormData[prod.id] || {};
@@ -4389,6 +4442,7 @@ async function guardarPedido() {
 
             if (!isNaN(valor) && valor > 0) {
                 stock[prod.id] = (stock[prod.id] || 0) + valor;
+                referenciasActualizadas[prod.id] = { stockReferencia: stock[prod.id], cantidadUltimoPedido: valor, fecha: fechaIngreso };
                 productosCargados++;
             }
 
@@ -4403,8 +4457,10 @@ async function guardarPedido() {
         }
 
         notasPedidos = notasActualizadas;
+        referenciasReposicion = referenciasActualizadas;
         await db.collection('config').doc('stock').set({ data: stock });
         await db.collection('config').doc('notasPedidos').set({ data: notasPedidos });
+        await db.collection('config').doc('referenciasReposicion').set({ data: referenciasReposicion });
 
         alert('✅ Pedido cargado\n📦 Productos ingresados: ' + productosCargados + '\n📝 Notas permanentes activas: ' + Object.keys(notasPedidos).length);
         pedidoFormData = {};
