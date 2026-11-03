@@ -496,6 +496,45 @@
                     </div>
                 </section>
 
+                <section id="fondoCambio" class="tab-content">
+                    <h2>💵 Fondo de Cambio</h2>
+                    <p class="info-box">Fondo compartido e independiente de la caja registradora. Registrá cada ingreso o retiro para mantener el saldo actualizado.</p>
+                    <div class="fondo-saldo-panel">
+                        <span>DINERO DISPONIBLE EN EL FONDO</span>
+                        <strong id="saldoFondoCambio">$0</strong>
+                    </div>
+                    <div class="seccion-colapsable" style="margin-top: 20px;">
+                        <div class="seccion-header" onclick="toggleSeccion('formMovimientoFondoCambio')">
+                            <h3>📝 Registrar movimiento</h3>
+                            <span class="toggle-icon" id="icon-formMovimientoFondoCambio">▼</span>
+                        </div>
+                        <div class="seccion-contenido" id="formMovimientoFondoCambio">
+                            <div class="form-container">
+                                <label style="font-weight:bold;display:block;">Tipo de movimiento:</label>
+                                <select id="tipoMovimientoFondoCambio">
+                                    <option value="ingreso">⬆️ Agregar dinero</option>
+                                    <option value="retiro">⬇️ Retirar dinero</option>
+                                </select>
+                                <label style="font-weight:bold;display:block;margin-top:10px;">Importe:</label>
+                                <input type="number" id="importeFondoCambio" placeholder="$" min="0.01" step="0.01">
+                                <label style="font-weight:bold;display:block;margin-top:10px;">Motivo o descripción:</label>
+                                <input type="text" id="motivoFondoCambio" maxlength="160" placeholder="Ej: Cambio para caja">
+                                <button id="btnGuardarFondoCambio" class="btn-primary" onclick="guardarMovimientoFondoCambio()" style="width:100%;margin-top:15px;">💾 Registrar movimiento</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable" style="margin-top:15px;">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionHistorialFondoCambio')">
+                            <h3>📜 Últimos movimientos</h3>
+                            <span class="toggle-icon" id="icon-seccionHistorialFondoCambio">▼</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionHistorialFondoCambio">
+                            <div id="historialFondoCambio"></div>
+                            <p class="info-box">El detalle de los movimientos se conserva durante 90 días. El saldo acumulado permanece guardado para que la limpieza del historial no lo modifique.</p>
+                        </div>
+                    </div>
+                </section>
+
                 <section id="gastos" class="tab-content">
                     <h2>💸 Gastos del Comercio</h2>
                     <div class="seccion-colapsable">
@@ -657,6 +696,18 @@
                         </div>
                         <div class="seccion-contenido" id="seccionDesgloseGastos" style="display:none;">
                             <div id="desgloseGastos"></div>
+                        </div>
+                    </div>
+                    <div class="seccion-colapsable" style="margin-top:20px;">
+                        <div class="seccion-header" onclick="toggleSeccion('seccionEvolucionHistorica')">
+                            <h3>📈 Evolución histórica del negocio</h3>
+                            <span class="toggle-icon" id="icon-seccionEvolucionHistorica">▶</span>
+                        </div>
+                        <div class="seccion-contenido" id="seccionEvolucionHistorica" style="display:none;">
+                            <p class="info-box">Compará ventas, gastos y resultados por año. Los resúmenes mensuales se conservan permanentemente.</p>
+                            <label for="filtroEvolucionAnio" style="font-weight:bold;display:block;margin:10px 0 5px;">Año a consultar:</label>
+                            <select id="filtroEvolucionAnio" onchange="cargarEvolucionHistorica()" style="width:100%;max-width:240px;padding:10px;border:1px solid #ddd;border-radius:8px;"></select>
+                            <div id="evolucionHistoricaContenido" style="margin-top:15px;"></div>
                         </div>
                     </div>
                     <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
@@ -878,8 +929,9 @@
                             <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
                                 <button class="btn-primary" onclick="limpiarHistorialManual('historialConteos', 30)">🧹 Limpiar conteos</button>
                                 <button class="btn-primary" onclick="limpiarHistorialManual('camaraMovimientos', 30)">🧹 Limpiar mov. cámara</button>
-                                <button class="btn-primary" onclick="limpiarHistorialManual('cierres', 90)">🧹 Limpiar cierres</button>
-                                <button class="btn-primary" onclick="limpiarHistorialManual('cajas', 90)">🧹 Limpiar cajas</button>
+                                <button class="btn-primary" onclick="limpiarHistorialManual('fondoCambioMovimientos', 90)">🧹 Limpiar Fondo de Cambio (90 días)</button>
+                                <button class="btn-primary" onclick="limpiarHistorialManual('cierres', 1825)">🧹 Limpiar cierres (+5 años)</button>
+                                <button class="btn-primary" onclick="limpiarHistorialManual('cajas', 1825)">🧹 Limpiar cajas (+5 años)</button>
                                 <button class="btn-primary" onclick="limpiarHistorialManual('consumos', 45)">🧹 Limpiar consumos</button>
                                 <button class="btn-danger" onclick="limpiarPedidosCamaraTraidos()">🗑️ Borrar pedidos traídos</button>
                             </div>
