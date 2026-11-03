@@ -461,12 +461,16 @@ function iniciarSincronizacionEnVivo() {
     });
     listenersEnVivo.push(unsubConsumos);
 
-    const unsubFondoCambio = db.collection('fondoCambioMovimientos').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
-        fondoCambioMovimientos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const tabActiva = document.querySelector('.tab-content.active');
-        if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
-    });
-    listenersEnVivo.push(unsubFondoCambio);
+    if (modoActual === 'admin') {
+        const unsubFondoCambio = db.collection('fondoCambioMovimientos').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+            fondoCambioMovimientos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const tabActiva = document.querySelector('.tab-content.active');
+            if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
+        });
+        listenersEnVivo.push(unsubFondoCambio);
+    } else {
+        fondoCambioMovimientos = [];
+    }
 
     const unsubSaldoFondoCambio = db.collection('config').doc('fondoCambio').onSnapshot(snapshot => {
         saldoFondoCambio = snapshot.exists ? Number(snapshot.data().saldo || 0) : 0;
@@ -629,8 +633,6 @@ async function cargarDatosIniciales() {
         turnos = turnosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const consumosSnapshot = await db.collection('consumos').get();
         consumos = consumosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const fondoMovimientosSnapshot = await db.collection('fondoCambioMovimientos').get();
-        fondoCambioMovimientos = fondoMovimientosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const fondoCambioDoc = await db.collection('config').doc('fondoCambio').get();
         saldoFondoCambio = fondoCambioDoc.exists ? Number(fondoCambioDoc.data().saldo || 0) : 0;
     } catch (error) { console.error('Error cargando datos:', error); }
@@ -3246,8 +3248,10 @@ function obtenerFechaMovimientoFondoCambio(movimiento) {
 function cargarFondoCambio() {
     const saldo = document.getElementById('saldoFondoCambio');
     const lista = document.getElementById('historialFondoCambio');
+    const bloqueHistorial = document.getElementById('bloqueHistorialFondoCambio');
     if (saldo) saldo.textContent = formatearMoneda(saldoFondoCambio);
-    if (!lista) return;
+    if (bloqueHistorial) bloqueHistorial.style.display = modoActual === 'admin' ? 'block' : 'none';
+    if (modoActual !== 'admin' || !lista) return;
     const movimientos = [...fondoCambioMovimientos].sort((a, b) => {
         const fechaA = obtenerFechaMovimientoFondoCambio(a);
         const fechaB = obtenerFechaMovimientoFondoCambio(b);
