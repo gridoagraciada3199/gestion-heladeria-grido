@@ -460,6 +460,20 @@ function iniciarSincronizacionEnVivo() {
         }
     });
     listenersEnVivo.push(unsubConsumos);
+
+    const unsubFondoCambio = db.collection('fondoCambioMovimientos').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+        fondoCambioMovimientos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const tabActiva = document.querySelector('.tab-content.active');
+        if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
+    });
+    listenersEnVivo.push(unsubFondoCambio);
+
+    const unsubSaldoFondoCambio = db.collection('config').doc('fondoCambio').onSnapshot(snapshot => {
+        saldoFondoCambio = snapshot.exists ? Number(snapshot.data().saldo || 0) : 0;
+        const tabActiva = document.querySelector('.tab-content.active');
+        if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
+    });
+    listenersEnVivo.push(unsubSaldoFondoCambio);
     
     console.log('✅ Sincronización en vivo activada');
 }
@@ -547,6 +561,10 @@ let turnos = [];
 let turnoSeleccionado = null;
 let consumos = []; // 🎁 NUEVO
 let fotoConsumoBase64 = null; // 🎁 NUEVO
+let fondoCambioMovimientos = [];
+let saldoFondoCambio = 0;
+let resumenesHistoricos = [];
+let actualizandoResumenesHistoricos = false;
 
 document.addEventListener('DOMContentLoaded', async function() {
     await cargarDatosIniciales();
@@ -611,6 +629,10 @@ async function cargarDatosIniciales() {
         turnos = turnosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const consumosSnapshot = await db.collection('consumos').get();
         consumos = consumosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const fondoMovimientosSnapshot = await db.collection('fondoCambioMovimientos').get();
+        fondoCambioMovimientos = fondoMovimientosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const fondoCambioDoc = await db.collection('config').doc('fondoCambio').get();
+        saldoFondoCambio = fondoCambioDoc.exists ? Number(fondoCambioDoc.data().saldo || 0) : 0;
     } catch (error) { console.error('Error cargando datos:', error); }
 }
 
@@ -654,9 +676,12 @@ async function limpiarHistorialViejo() {
             }
         });
         if (pedidosBorrados > 0) await batchPedidos.commit();
-        await limpiarColeccionPorFecha('cierres', 90, 'timestamp');
-        await limpiarColeccionPorFecha('cajas', 90, 'timestamp');
-        await limpiarColeccionPorFecha('gastos', 365, 'timestamp');
+        // Guardar/actualizar los resúmenes antes de depurar los registros detallados.
+        await actualizarResumenesHistoricos();
+        await limpiarColeccionPorFecha('fondoCambioMovimientos', 90, 'timestamp');
+        await limpiarColeccionPorFecha('cierres', 1825, 'timestamp');
+        await limpiarColeccionPorFecha('cajas', 1825, 'timestamp');
+        await limpiarColeccionPorFecha('gastos', 1825, 'timestamp');
         // 🎁 NUEVO: limpiar consumos de más de 45 días
         await limpiarColeccionPorFecha('consumos', 45, 'timestamp');
         const avisosSnap = await db.collection('avisos').get();
@@ -870,7 +895,7 @@ async function borrarTodoPrueba() {
     if (!confirm('⚠️ ¿BORRAR TODOS los datos del entorno de pruebas?')) return;
     if (!confirm('⚠️ ÚLTIMA CONFIRMACIÓN. ¿Continuar?')) return;
     try {
-        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos', 'ventasSmartFran'];
+        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos', 'ventasSmartFran', 'fondoCambioMovimientos', 'resumenesHistoricos'];
         for (const coleccion of colecciones) {
             const snap = await db.collection(coleccion).get();
             const batch = db.batch();
@@ -882,6 +907,7 @@ async function borrarTodoPrueba() {
         await db.collection('config').doc('referenciasReposicion').set({ data: {} });
         await db.collection('config').doc('notasConteo').set({ data: {} });
         await db.collection('config').doc('tareasCompletadas').set({ data: {} });
+        await db.collection('config').doc('fondoCambio').set({ saldo: 0 });
         await db.collection('config').doc('ultimoDia').set({ fecha: '' });
         alert('✅ Datos borrados');
         await cargarDatosIniciales();
@@ -983,6 +1009,7 @@ function configurarNavegacion() {
                 <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
                     <button class="nav-btn" data-tab="caja">💰 Caja</button>
+                    <button class="nav-btn" data-tab="fondoCambio">💵 Fondo de Cambio</button>
                 </div>
             </div>
         `;
@@ -1019,6 +1046,7 @@ function configurarNavegacion() {
                 <div class="nav-categoria-contenido">
                     <button class="nav-btn" data-tab="cierre">🧾 Cierre</button>
                     <button class="nav-btn" data-tab="caja">💰 Caja</button>
+                    <button class="nav-btn" data-tab="fondoCambio">💵 Fondo de Cambio</button>
                     <button class="nav-btn" data-tab="gastos">💸 Gastos</button>
                     <button class="nav-btn" data-tab="finanzas">📊 Finanzas</button>
                     <button class="nav-btn" data-tab="cierresAdmin">🧾 Cierres</button>
@@ -1060,6 +1088,7 @@ function cambiarTab(tab) {
     if (tab === 'cierre') cargarCierre();
     if (tab === 'cierresAdmin') cargarCierresAdmin();
     if (tab === 'caja') cargarCaja();
+    if (tab === 'fondoCambio') cargarFondoCambio();
     if (tab === 'gastos') cargarGastos();
     if (tab === 'finanzas') cargarFinanzas();
     if (tab === 'conteo') { actualizarBarraProgreso(); cargarConteo(); }
@@ -3206,6 +3235,92 @@ function cargarCaja() {
     if (adminBox) adminBox.style.display = modoActual === 'admin' ? 'block' : 'none';
     cargarHistorialCajas();
 }
+function obtenerFechaMovimientoFondoCambio(movimiento) {
+    const valor = movimiento && movimiento.timestamp;
+    if (!valor) return null;
+    if (valor.toDate) return valor.toDate();
+    const fecha = new Date(valor);
+    return isNaN(fecha.getTime()) ? null : fecha;
+}
+
+function cargarFondoCambio() {
+    const saldo = document.getElementById('saldoFondoCambio');
+    const lista = document.getElementById('historialFondoCambio');
+    if (saldo) saldo.textContent = formatearMoneda(saldoFondoCambio);
+    if (!lista) return;
+    const movimientos = [...fondoCambioMovimientos].sort((a, b) => {
+        const fechaA = obtenerFechaMovimientoFondoCambio(a);
+        const fechaB = obtenerFechaMovimientoFondoCambio(b);
+        return (fechaB ? fechaB.getTime() : 0) - (fechaA ? fechaA.getTime() : 0);
+    });
+    if (!movimientos.length) {
+        lista.innerHTML = '<p class="info-box">Todavía no hay movimientos registrados en el Fondo de Cambio.</p>';
+        return;
+    }
+    lista.innerHTML = movimientos.map(movimiento => {
+        const fecha = obtenerFechaMovimientoFondoCambio(movimiento);
+        const fechaTexto = fecha ? fecha.toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' }) : 'Fecha no disponible';
+        const ingreso = movimiento.tipo === 'ingreso';
+        return `
+            <div class="fondo-movimiento ${ingreso ? 'ingreso' : 'retiro'}">
+                <div class="fondo-movimiento-cabecera">
+                    <strong>${ingreso ? '⬆️ Ingreso' : '⬇️ Retiro'}</strong>
+                    <strong class="fondo-movimiento-importe">${ingreso ? '+' : '−'}${formatearMoneda(Number(movimiento.importe || 0))}</strong>
+                </div>
+                <p>👤 ${movimiento.empleadoNombre || 'Sin identificar'}</p>
+                <p>🕒 ${fechaTexto}</p>
+                <p>📝 ${movimiento.motivo || 'Sin descripción'}</p>
+            </div>
+        `;
+    }).join('');
+}
+
+async function guardarMovimientoFondoCambio() {
+    const tipo = document.getElementById('tipoMovimientoFondoCambio').value;
+    const importe = Math.round(parsearNumeroArgentino(document.getElementById('importeFondoCambio').value) * 100) / 100;
+    const motivo = document.getElementById('motivoFondoCambio').value.trim();
+    if (!['ingreso', 'retiro'].includes(tipo)) { alert('Seleccioná un tipo de movimiento.'); return; }
+    if (!Number.isFinite(importe) || importe <= 0) { alert('Ingresá un importe mayor a cero.'); return; }
+    if (!motivo) { alert('Ingresá el motivo del movimiento.'); return; }
+
+    const boton = document.getElementById('btnGuardarFondoCambio');
+    if (boton) boton.disabled = true;
+    const empleadoId = empleadoActual ? empleadoActual.id : 'admin';
+    const empleadoNombre = empleadoActual ? empleadoActual.nombre : 'Administrador';
+    const saldoRef = db.collection('config').doc('fondoCambio');
+    const movimientoRef = db.collection('fondoCambioMovimientos').doc();
+    try {
+        const nuevoSaldo = await db.runTransaction(async transaction => {
+            const saldoDoc = await transaction.get(saldoRef);
+            const saldoActual = saldoDoc.exists ? Number(saldoDoc.data().saldo || 0) : 0;
+            if (tipo === 'retiro' && importe > saldoActual) {
+                throw new Error('SALDO_INSUFICIENTE');
+            }
+            const saldoActualizado = Math.round((tipo === 'ingreso' ? saldoActual + importe : saldoActual - importe) * 100) / 100;
+            transaction.set(saldoRef, {
+                saldo: saldoActualizado,
+                actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            transaction.set(movimientoRef, {
+                tipo, importe, motivo, empleadoId, empleadoNombre,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            return saldoActualizado;
+        });
+        saldoFondoCambio = nuevoSaldo;
+        document.getElementById('importeFondoCambio').value = '';
+        document.getElementById('motivoFondoCambio').value = '';
+        cargarFondoCambio();
+        mostrarToast(tipo === 'ingreso' ? 'Ingreso registrado en el Fondo de Cambio' : 'Retiro registrado del Fondo de Cambio', tipo === 'ingreso' ? 'entrada' : 'salida');
+    } catch (error) {
+        console.error('Error registrando movimiento del Fondo de Cambio:', error);
+        if (error.message === 'SALDO_INSUFICIENTE') alert('No se puede retirar ese importe: supera el saldo disponible del Fondo de Cambio.');
+        else alert('No se pudo registrar el movimiento. Intentá nuevamente.');
+    } finally {
+        if (boton) boton.disabled = false;
+    }
+}
+
 function cargarResumenCajaHoy() {
     const contenedor = document.getElementById('resumenCajaHoy');
     if (!contenedor) return;
@@ -3421,6 +3536,123 @@ async function eliminarGasto(id) {
     }
 }
 
+// ========== HISTÓRICO PERMANENTE DEL NEGOCIO ==========
+function obtenerMesHistorico(fechaValor) {
+    const fechaISO = normalizarFechaOperativaISO(fechaValor || '');
+    return /^\d{4}-\d{2}-\d{2}$/.test(fechaISO) ? fechaISO.slice(0, 7) : '';
+}
+
+async function actualizarResumenesHistoricos() {
+    if (actualizandoResumenesHistoricos) return;
+    actualizandoResumenesHistoricos = true;
+    try {
+        const grupos = {};
+        const obtenerGrupo = mes => {
+            if (!mes) return null;
+            if (!grupos[mes]) grupos[mes] = {
+                mes, anio: Number(mes.slice(0, 4)), ventas: 0, gastos: 0, resultado: 0,
+                ventasEfectivo: 0, ventasCredito: 0, ventasDebito: 0,
+                cantidadCierres: 0, efectivoEnCierres: 0, totalRegistradoCierres: 0, retirosCierres: 0
+            };
+            return grupos[mes];
+        };
+
+        ventasSmartFran.forEach(venta => {
+            const grupo = obtenerGrupo(obtenerMesHistorico(venta.diaOperativo || venta.fecha));
+            if (!grupo) return;
+            grupo.ventas += Number(venta.total || 0);
+            grupo.ventasEfectivo += Number(venta.efectivo || 0);
+            grupo.ventasCredito += Number(venta.credito || 0);
+            grupo.ventasDebito += Number(venta.debito || 0);
+        });
+        gastos.forEach(gasto => {
+            const grupo = obtenerGrupo(obtenerMesHistorico(gasto.diaOperativo || gasto.fecha));
+            if (grupo) grupo.gastos += Number(gasto.monto || 0);
+        });
+        cierres.forEach(cierre => {
+            const grupo = obtenerGrupo(obtenerMesHistorico(obtenerDiaOperativoRegistro(cierre) || cierre.fecha));
+            if (!grupo) return;
+            grupo.cantidadCierres++;
+            grupo.efectivoEnCierres += Number(cierre.efectivoFisico ?? cierre.efectivo ?? cierre.conteo ?? 0);
+            grupo.totalRegistradoCierres += Number(cierre.totalRegistrado ?? 0);
+            grupo.retirosCierres += Number(cierre.totalRetiros || 0);
+        });
+
+        const existentes = await db.collection('resumenesHistoricos').get();
+        const porMes = {};
+        existentes.docs.forEach(doc => { porMes[doc.id] = doc.data(); });
+        const batch = db.batch();
+        let escrituras = 0;
+        Object.values(grupos).forEach(grupo => {
+            grupo.resultado = grupo.ventas - grupo.gastos;
+            const anterior = porMes[grupo.mes] || {};
+            const campos = ['ventas', 'gastos', 'resultado', 'ventasEfectivo', 'ventasCredito', 'ventasDebito', 'cantidadCierres', 'efectivoEnCierres', 'totalRegistradoCierres', 'retirosCierres'];
+            const cambio = campos.some(campo => Number(anterior[campo] || 0) !== Number(grupo[campo] || 0));
+            if (cambio || !porMes[grupo.mes]) {
+                batch.set(db.collection('resumenesHistoricos').doc(grupo.mes), {
+                    ...grupo, actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                escrituras++;
+            }
+        });
+        if (escrituras) await batch.commit();
+    } catch (error) {
+        console.error('No se pudieron actualizar los resúmenes históricos:', error);
+    } finally {
+        actualizandoResumenesHistoricos = false;
+    }
+}
+
+async function cargarEvolucionHistorica() {
+    const contenedor = document.getElementById('evolucionHistoricaContenido');
+    const filtro = document.getElementById('filtroEvolucionAnio');
+    if (!contenedor || !filtro) return;
+    try {
+        const snapshot = await db.collection('resumenesHistoricos').get();
+        resumenesHistoricos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => String(b.mes).localeCompare(String(a.mes)));
+        const anios = [...new Set(resumenesHistoricos.map(r => Number(r.anio || String(r.mes).slice(0, 4))))].filter(Number.isFinite).sort((a, b) => b - a);
+        if (!anios.length) {
+            filtro.innerHTML = '<option value="">Sin años disponibles</option>';
+            contenedor.innerHTML = '<p class="info-box">Todavía no hay datos financieros históricos para comparar. Los resúmenes se irán generando a partir de las ventas SmartFran, gastos y cierres registrados.</p>';
+            return;
+        }
+        const seleccionadoAnterior = Number(filtro.value);
+        const anio = anios.includes(seleccionadoAnterior) ? seleccionadoAnterior : anios[0];
+        filtro.innerHTML = anios.map(valor => `<option value="${valor}" ${valor === anio ? 'selected' : ''}>${valor}</option>`).join('');
+        const filas = resumenesHistoricos.filter(r => Number(r.anio || String(r.mes).slice(0, 4)) === anio).sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
+        const sumar = (lista, campo) => lista.reduce((total, item) => total + Number(item[campo] || 0), 0);
+        const totalVentas = sumar(filas, 'ventas');
+        const totalGastos = sumar(filas, 'gastos');
+        const totalResultado = totalVentas - totalGastos;
+        const filasAnterior = resumenesHistoricos.filter(r => Number(r.anio || String(r.mes).slice(0, 4)) === anio - 1);
+        const ventasAnterior = sumar(filasAnterior, 'ventas');
+        const variacion = ventasAnterior > 0 ? ((totalVentas - ventasAnterior) / ventasAnterior) * 100 : null;
+        const formatoVariacion = variacion === null ? 'Sin año anterior comparable' : `${variacion >= 0 ? '+' : ''}${variacion.toFixed(1).replace('.', ',')}% frente a ${anio - 1}`;
+        const nombreMes = mes => {
+            const [year, month] = String(mes).split('-').map(Number);
+            return new Date(year, month - 1, 1).toLocaleDateString('es-UY', { month: 'long' });
+        };
+        contenedor.innerHTML = `
+            <div class="dashboard-grid">
+                <div class="card"><h3>📈 Ventas ${anio}</h3><p class="stat-number">${formatearMoneda(totalVentas)}</p><p class="stat-label">${formatoVariacion}</p></div>
+                <div class="card"><h3>💸 Gastos ${anio}</h3><p class="stat-number">${formatearMoneda(totalGastos)}</p><p class="stat-label">Registros consolidados del año</p></div>
+                <div class="card"><h3>💰 Resultado</h3><p class="stat-number">${formatearMoneda(totalResultado)}</p><p class="stat-label">Ventas SmartFran menos gastos</p></div>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="tabla-previa">
+                    <thead><tr><th>Mes</th><th>Ventas</th><th>Gastos</th><th>Resultado</th><th>Cierres</th></tr></thead>
+                    <tbody>${filas.map(r => `<tr><td>${nombreMes(r.mes)}</td><td>${formatearMoneda(r.ventas || 0)}</td><td>${formatearMoneda(r.gastos || 0)}</td><td>${formatearMoneda(r.resultado ?? ((r.ventas || 0) - (r.gastos || 0)))}</td><td>${Number(r.cantidadCierres || 0)}</td></tr>`).join('')}</tbody>
+                </table>
+            </div>
+            <p class="info-box">Los resúmenes mensuales se conservan permanentemente, incluso cuando los registros detallados cumplen sus 5 años de conservación. ${filasAnterior.length ? `Comparación anual contra ${anio - 1} disponible.` : ''}</p>
+        `;
+    } catch (error) {
+        console.error('Error cargando evolución histórica:', error);
+        contenedor.innerHTML = '<p class="info-box">No se pudo cargar el histórico.</p>';
+    }
+}
+
 // ========== FINANZAS ==========
 function cargarFinanzas() {
     const periodo=document.getElementById('filtroFinanzasPeriodo').value,ahora=new Date(),diaHoy=obtenerFechaISOOperativa(ahora);
@@ -3444,7 +3676,7 @@ function cargarFinanzas() {
     <div class="info-box" style="margin-top:10px;"><strong>💰 Total dinero registrado en cierres:</strong> ${formatearMoneda(totalRegistradoCierres)}<br><strong>💸 Retiros:</strong> ${formatearMoneda(totalRetiros)}<br><small>El efectivo de los cierres es dinero físico contado en caja; no se considera venta en efectivo.</small></div>`;
     const gastosPorCategoria={};gastosPeriodo.forEach(g=>{gastosPorCategoria[g.categoria]=(gastosPorCategoria[g.categoria]||0)+Number(g.monto||0);});const maxGasto=Math.max(...Object.values(gastosPorCategoria),1);let gastosHtml='';
     Object.keys(gastosPorCategoria).sort((a,b)=>gastosPorCategoria[b]-gastosPorCategoria[a]).forEach(cat=>{gastosHtml+=`<div class="desglose-item"><span>${CATEGORIAS_GASTOS[cat]||cat}</span><div class="barra"><div class="barra-relleno" style="width:${(gastosPorCategoria[cat]/maxGasto)*100}%;background:linear-gradient(135deg,#ff4757 0%,#c44569 100%);"></div></div><strong>${formatearMoneda(gastosPorCategoria[cat])}</strong></div>`;});
-    document.getElementById('desgloseGastos').innerHTML=gastosHtml||'<p class="info-box">No hay gastos</p>';cargarReporteDescuentos();
+    document.getElementById('desgloseGastos').innerHTML=gastosHtml||'<p class="info-box">No hay gastos</p>';cargarReporteDescuentos();actualizarResumenesHistoricos().then(cargarEvolucionHistorica);
 }
 function cargarReporteDescuentos() {
     const totalDescuentos = productos.reduce((sum, prod) => {
@@ -4744,8 +4976,9 @@ async function exportarDatos() {
             productos: [], empleados: [], stock: {}, stockCamara: {}, referenciasReposicion: {}, notasConteo: {}, 
             tareas: [], tareasCompletadas: {}, eventos: [], 
             historialConteos: [], pedidosCamara: [], movimientosCamara: [], 
-            cierres: [], cajas: [], gastos: [], avisos: [], 
-            fichajes: [], turnos: [], consumos: [], ventasSmartFran: [] 
+            cierres: [], cajas: [], gastos: [], avisos: [],
+            fichajes: [], turnos: [], consumos: [], ventasSmartFran: [],
+            fondoCambioMovimientos: [], resumenesHistoricos: [], fondoCambioSaldo: 0 
         };
         const productosSnap = await db.collection('productos').get(); backup.productos = productosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const empleadosSnap = await db.collection('empleados').get(); backup.empleados = empleadosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -4766,6 +4999,9 @@ async function exportarDatos() {
         const turnosSnap = await db.collection('turnos').get(); backup.turnos = turnosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const consumosSnap = await db.collection('consumos').get(); backup.consumos = consumosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const ventasSmartFranSnap = await db.collection('ventasSmartFran').get(); backup.ventasSmartFran = ventasSmartFranSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const fondoMovimientosSnap = await db.collection('fondoCambioMovimientos').get(); backup.fondoCambioMovimientos = fondoMovimientosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const resumenesSnap = await db.collection('resumenesHistoricos').get(); backup.resumenesHistoricos = resumenesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const fondoSaldoDoc = await db.collection('config').doc('fondoCambio').get(); backup.fondoCambioSaldo = fondoSaldoDoc.exists ? Number(fondoSaldoDoc.data().saldo || 0) : 0;
         const json = JSON.stringify(backup, null, 2);
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -4784,7 +5020,7 @@ async function importarDatos() {
     try {
         const texto = await archivo.text();
         const backup = JSON.parse(texto);
-        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos'];
+        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos', 'fondoCambioMovimientos', 'resumenesHistoricos'];
         for (const coleccion of colecciones) {
             const snap = await db.collection(coleccion).get();
             const batch = db.batch();
@@ -4806,6 +5042,9 @@ async function importarDatos() {
         if (backup.turnos) for (const turno of backup.turnos) { const { id, ...data } = turno; await db.collection('turnos').doc(id).set(data); }
         if (backup.consumos) for (const consumo of backup.consumos) { const { id, ...data } = consumo; await db.collection('consumos').doc(id).set(data); }
         if (backup.ventasSmartFran) for (const venta of backup.ventasSmartFran) { const { id, ...data } = venta; await db.collection('ventasSmartFran').doc(id).set(data); }
+        if (backup.fondoCambioMovimientos) for (const movimiento of backup.fondoCambioMovimientos) { const { id, ...data } = movimiento; await db.collection('fondoCambioMovimientos').doc(id).set(data); }
+        if (backup.resumenesHistoricos) for (const resumen of backup.resumenesHistoricos) { const { id, ...data } = resumen; await db.collection('resumenesHistoricos').doc(id).set(data); }
+        await db.collection('config').doc('fondoCambio').set({ saldo: Number(backup.fondoCambioSaldo || 0) });
         await db.collection('config').doc('stock').set({ data: backup.stock || {} });
         await db.collection('config').doc('stockCamara').set({ data: backup.stockCamara || {} });
         await db.collection('config').doc('referenciasReposicion').set({ data: backup.referenciasReposicion || {} });
