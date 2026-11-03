@@ -1,0 +1,8 @@
+# Archivos internos del proyecto: no deben publicarse como recursos web
+functions/
+.github/
+.git/
+.wrangler/
+firebase.json
+wrangler.jsonc
+.assetsignore
