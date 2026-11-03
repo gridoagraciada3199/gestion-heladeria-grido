@@ -5020,7 +5020,10 @@ async function importarDatos() {
     try {
         const texto = await archivo.text();
         const backup = JSON.parse(texto);
-        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos', 'fondoCambioMovimientos', 'resumenesHistoricos'];
+        const colecciones = ['productos', 'empleados', 'tareas', 'eventos', 'historialConteos', 'camaraPedidos', 'camaraMovimientos', 'cierres', 'cajas', 'gastos', 'avisos', 'fichajes', 'turnos', 'consumos'];
+        // Los respaldos antiguos no contienen estas colecciones nuevas: en ese caso se preservan los datos actuales.
+        if (Array.isArray(backup.fondoCambioMovimientos)) colecciones.push('fondoCambioMovimientos');
+        if (Array.isArray(backup.resumenesHistoricos)) colecciones.push('resumenesHistoricos');
         for (const coleccion of colecciones) {
             const snap = await db.collection(coleccion).get();
             const batch = db.batch();
@@ -5044,7 +5047,9 @@ async function importarDatos() {
         if (backup.ventasSmartFran) for (const venta of backup.ventasSmartFran) { const { id, ...data } = venta; await db.collection('ventasSmartFran').doc(id).set(data); }
         if (backup.fondoCambioMovimientos) for (const movimiento of backup.fondoCambioMovimientos) { const { id, ...data } = movimiento; await db.collection('fondoCambioMovimientos').doc(id).set(data); }
         if (backup.resumenesHistoricos) for (const resumen of backup.resumenesHistoricos) { const { id, ...data } = resumen; await db.collection('resumenesHistoricos').doc(id).set(data); }
-        await db.collection('config').doc('fondoCambio').set({ saldo: Number(backup.fondoCambioSaldo || 0) });
+        if (backup.fondoCambioSaldo !== undefined) {
+            await db.collection('config').doc('fondoCambio').set({ saldo: Number(backup.fondoCambioSaldo || 0) });
+        }
         await db.collection('config').doc('stock').set({ data: backup.stock || {} });
         await db.collection('config').doc('stockCamara').set({ data: backup.stockCamara || {} });
         await db.collection('config').doc('referenciasReposicion').set({ data: backup.referenciasReposicion || {} });
