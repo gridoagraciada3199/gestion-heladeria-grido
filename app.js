@@ -568,6 +568,7 @@ let fotoConsumoBase64 = null; // 🎁 NUEVO
 let fondoCambioMovimientos = [];
 let saldoFondoCambio = 0;
 let resumenesHistoricos = [];
+let resumenesHistoricosCargados = false;
 let actualizandoResumenesHistoricos = false;
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -591,49 +592,52 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 async function cargarDatosIniciales() {
     try {
-        const productosSnapshot = await db.collection('productos').get();
+        // Durante una sesión activa, los listeners ya mantienen la caché local sincronizada.
+        // Leer desde caché evita volver a descargar todas las colecciones después de cada operación.
+        const leer = referencia => listenersEnVivo.length > 0 ? referencia.get({ source: 'cache' }) : referencia.get();
+        const productosSnapshot = await leer(db.collection('productos').get());
         productos = productosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const empleadosSnapshot = await db.collection('empleados').get();
+        const empleadosSnapshot = await leer(db.collection('empleados').get());
         empleados = empleadosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const stockDoc = await db.collection('config').doc('stock').get();
+        const stockDoc = await leer(db.collection('config').doc('stock').get());
         stock = stockDoc.exists ? stockDoc.data().data : {};
-        const stockCamaraDoc = await db.collection('config').doc('stockCamara').get();
+        const stockCamaraDoc = await leer(db.collection('config').doc('stockCamara').get());
         stockCamara = stockCamaraDoc.exists ? stockCamaraDoc.data().data : {};
-        const referenciasReposicionDoc = await db.collection('config').doc('referenciasReposicion').get();
+        const referenciasReposicionDoc = await leer(db.collection('config').doc('referenciasReposicion').get());
         referenciasReposicion = referenciasReposicionDoc.exists ? (referenciasReposicionDoc.data().data || {}) : {};
-        const notasConteoDoc = await db.collection('config').doc('notasConteo').get();
+        const notasConteoDoc = await leer(db.collection('config').doc('notasConteo').get());
         notasConteo = notasConteoDoc.exists ? (notasConteoDoc.data().data || {}) : {};
-        const notasPedidosDoc = await db.collection('config').doc('notasPedidos').get();
+        const notasPedidosDoc = await leer(db.collection('config').doc('notasPedidos').get());
         notasPedidos = notasPedidosDoc.exists ? (notasPedidosDoc.data().data || {}) : {};
-        const tareasSnapshot = await db.collection('tareas').get();
+        const tareasSnapshot = await leer(db.collection('tareas').get());
         tareas = tareasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const tareasCompDoc = await db.collection('config').doc('tareasCompletadas').get();
+        const tareasCompDoc = await leer(db.collection('config').doc('tareasCompletadas').get());
         tareasCompletadas = tareasCompDoc.exists ? tareasCompDoc.data().data : {};
-        const eventosSnapshot = await db.collection('eventos').get();
+        const eventosSnapshot = await leer(db.collection('eventos').get());
         eventos = eventosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const historialSnapshot = await db.collection('historialConteos').get();
+        const historialSnapshot = await leer(db.collection('historialConteos').get());
         historialConteos = historialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const pedidosCamaraSnapshot = await db.collection('camaraPedidos').get();
+        const pedidosCamaraSnapshot = await leer(db.collection('camaraPedidos').get());
         pedidosCamara = pedidosCamaraSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const movimientosCamaraSnapshot = await db.collection('camaraMovimientos').get();
+        const movimientosCamaraSnapshot = await leer(db.collection('camaraMovimientos').get());
         movimientosCamara = movimientosCamaraSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const cierresSnapshot = await db.collection('cierres').get();
+        const cierresSnapshot = await leer(db.collection('cierres').get());
         cierres = cierresSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const cajasSnapshot = await db.collection('cajas').get();
+        const cajasSnapshot = await leer(db.collection('cajas').get());
         cajas = cajasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const gastosSnapshot = await db.collection('gastos').get();
+        const gastosSnapshot = await leer(db.collection('gastos').get());
         gastos = gastosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const ventasSmartFranSnapshot = await db.collection('ventasSmartFran').get();
+        const ventasSmartFranSnapshot = await leer(db.collection('ventasSmartFran').get());
         ventasSmartFran = ventasSmartFranSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const avisosSnapshot = await db.collection('avisos').get();
+        const avisosSnapshot = await leer(db.collection('avisos').get());
         avisos = avisosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const fichajesSnapshot = await db.collection('fichajes').get();
+        const fichajesSnapshot = await leer(db.collection('fichajes').get());
         fichajes = fichajesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const turnosSnapshot = await db.collection('turnos').get();
+        const turnosSnapshot = await leer(db.collection('turnos').get());
         turnos = turnosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const consumosSnapshot = await db.collection('consumos').get();
+        const consumosSnapshot = await leer(db.collection('consumos').get());
         consumos = consumosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const fondoCambioDoc = await db.collection('config').doc('fondoCambio').get();
+        const fondoCambioDoc = await leer(db.collection('config').doc('fondoCambio').get());
         saldoFondoCambio = fondoCambioDoc.exists ? Number(fondoCambioDoc.data().saldo || 0) : 0;
     } catch (error) { console.error('Error cargando datos:', error); }
 }
@@ -3614,9 +3618,13 @@ async function actualizarResumenesHistoricos() {
             grupo.retirosCierres += Number(cierre.totalRetiros || 0);
         });
 
-        const existentes = await db.collection('resumenesHistoricos').get();
         const porMes = {};
-        existentes.docs.forEach(doc => { porMes[doc.id] = doc.data(); });
+        if (!resumenesHistoricosCargados) {
+            const existentes = await db.collection('resumenesHistoricos').get();
+            resumenesHistoricos = existentes.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            resumenesHistoricosCargados = true;
+        }
+        resumenesHistoricos.forEach(resumen => { porMes[resumen.id || resumen.mes] = resumen; });
         const batch = db.batch();
         let escrituras = 0;
         Object.values(grupos).forEach(grupo => {
@@ -3632,6 +3640,14 @@ async function actualizarResumenesHistoricos() {
             }
         });
         if (escrituras) await batch.commit();
+        // Mantener los resúmenes en memoria para no volver a descargarlos en cada render de Finanzas.
+        Object.values(grupos).forEach(grupo => {
+            const indice = resumenesHistoricos.findIndex(r => (r.id || r.mes) === grupo.mes);
+            const actualizado = { ...grupo, resultado: grupo.ventas - grupo.gastos };
+            if (indice >= 0) resumenesHistoricos[indice] = { ...resumenesHistoricos[indice], ...actualizado };
+            else resumenesHistoricos.push({ id: grupo.mes, ...actualizado });
+        });
+        resumenesHistoricosCargados = true;
     } catch (error) {
         console.error('No se pudieron actualizar los resúmenes históricos:', error);
     } finally {
@@ -3644,9 +3660,12 @@ async function cargarEvolucionHistorica() {
     const filtro = document.getElementById('filtroEvolucionAnio');
     if (!contenedor || !filtro) return;
     try {
-        const snapshot = await db.collection('resumenesHistoricos').get();
-        resumenesHistoricos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-            .sort((a, b) => String(b.mes).localeCompare(String(a.mes)));
+        if (!resumenesHistoricosCargados) {
+            const snapshot = await db.collection('resumenesHistoricos').get();
+            resumenesHistoricos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            resumenesHistoricosCargados = true;
+        }
+        resumenesHistoricos.sort((a, b) => String(b.mes).localeCompare(String(a.mes)));
         const anios = [...new Set(resumenesHistoricos.map(r => Number(r.anio || String(r.mes).slice(0, 4))))].filter(Number.isFinite).sort((a, b) => b - a);
         if (!anios.length) {
             filtro.innerHTML = '<option value="">Sin años disponibles</option>';
