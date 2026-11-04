@@ -23,8 +23,13 @@ let modoPrueba = false;
 let db;
 let listenersActivos = [];
 let listenersEnVivo = [];
+let resumenesHistoricos = [];
+let resumenesHistoricosCargados = false;
+let actualizandoResumenesHistoricos = false;
 
 function inicializarFirebase(config, esPrueba) {
+    resumenesHistoricos = [];
+    resumenesHistoricosCargados = false;
     if (firebase.apps.length > 0) {
         listenersActivos.forEach(unsub => { try { unsub(); } catch(e) {} });
         listenersEnVivo.forEach(unsub => { try { unsub(); } catch(e) {} });
@@ -567,9 +572,6 @@ let consumos = []; // 🎁 NUEVO
 let fotoConsumoBase64 = null; // 🎁 NUEVO
 let fondoCambioMovimientos = [];
 let saldoFondoCambio = 0;
-let resumenesHistoricos = [];
-let resumenesHistoricosCargados = false;
-let actualizandoResumenesHistoricos = false;
 
 document.addEventListener('DOMContentLoaded', async function() {
     await cargarDatosIniciales();
@@ -595,49 +597,49 @@ async function cargarDatosIniciales() {
         // Durante una sesión activa, los listeners ya mantienen la caché local sincronizada.
         // Leer desde caché evita volver a descargar todas las colecciones después de cada operación.
         const leer = referencia => listenersEnVivo.length > 0 ? referencia.get({ source: 'cache' }) : referencia.get();
-        const productosSnapshot = await leer(db.collection('productos').get());
+        const productosSnapshot = await leer(db.collection('productos'));
         productos = productosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const empleadosSnapshot = await leer(db.collection('empleados').get());
+        const empleadosSnapshot = await leer(db.collection('empleados'));
         empleados = empleadosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const stockDoc = await leer(db.collection('config').doc('stock').get());
+        const stockDoc = await leer(db.collection('config').doc('stock'));
         stock = stockDoc.exists ? stockDoc.data().data : {};
-        const stockCamaraDoc = await leer(db.collection('config').doc('stockCamara').get());
+        const stockCamaraDoc = await leer(db.collection('config').doc('stockCamara'));
         stockCamara = stockCamaraDoc.exists ? stockCamaraDoc.data().data : {};
-        const referenciasReposicionDoc = await leer(db.collection('config').doc('referenciasReposicion').get());
+        const referenciasReposicionDoc = await leer(db.collection('config').doc('referenciasReposicion'));
         referenciasReposicion = referenciasReposicionDoc.exists ? (referenciasReposicionDoc.data().data || {}) : {};
-        const notasConteoDoc = await leer(db.collection('config').doc('notasConteo').get());
+        const notasConteoDoc = await leer(db.collection('config').doc('notasConteo'));
         notasConteo = notasConteoDoc.exists ? (notasConteoDoc.data().data || {}) : {};
-        const notasPedidosDoc = await leer(db.collection('config').doc('notasPedidos').get());
+        const notasPedidosDoc = await leer(db.collection('config').doc('notasPedidos'));
         notasPedidos = notasPedidosDoc.exists ? (notasPedidosDoc.data().data || {}) : {};
-        const tareasSnapshot = await leer(db.collection('tareas').get());
+        const tareasSnapshot = await leer(db.collection('tareas'));
         tareas = tareasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const tareasCompDoc = await leer(db.collection('config').doc('tareasCompletadas').get());
+        const tareasCompDoc = await leer(db.collection('config').doc('tareasCompletadas'));
         tareasCompletadas = tareasCompDoc.exists ? tareasCompDoc.data().data : {};
-        const eventosSnapshot = await leer(db.collection('eventos').get());
+        const eventosSnapshot = await leer(db.collection('eventos'));
         eventos = eventosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const historialSnapshot = await leer(db.collection('historialConteos').get());
+        const historialSnapshot = await leer(db.collection('historialConteos'));
         historialConteos = historialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const pedidosCamaraSnapshot = await leer(db.collection('camaraPedidos').get());
+        const pedidosCamaraSnapshot = await leer(db.collection('camaraPedidos'));
         pedidosCamara = pedidosCamaraSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const movimientosCamaraSnapshot = await leer(db.collection('camaraMovimientos').get());
+        const movimientosCamaraSnapshot = await leer(db.collection('camaraMovimientos'));
         movimientosCamara = movimientosCamaraSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const cierresSnapshot = await leer(db.collection('cierres').get());
+        const cierresSnapshot = await leer(db.collection('cierres'));
         cierres = cierresSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const cajasSnapshot = await leer(db.collection('cajas').get());
+        const cajasSnapshot = await leer(db.collection('cajas'));
         cajas = cajasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const gastosSnapshot = await leer(db.collection('gastos').get());
+        const gastosSnapshot = await leer(db.collection('gastos'));
         gastos = gastosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const ventasSmartFranSnapshot = await leer(db.collection('ventasSmartFran').get());
+        const ventasSmartFranSnapshot = await leer(db.collection('ventasSmartFran'));
         ventasSmartFran = ventasSmartFranSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const avisosSnapshot = await leer(db.collection('avisos').get());
+        const avisosSnapshot = await leer(db.collection('avisos'));
         avisos = avisosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const fichajesSnapshot = await leer(db.collection('fichajes').get());
+        const fichajesSnapshot = await leer(db.collection('fichajes'));
         fichajes = fichajesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const turnosSnapshot = await leer(db.collection('turnos').get());
+        const turnosSnapshot = await leer(db.collection('turnos'));
         turnos = turnosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const consumosSnapshot = await leer(db.collection('consumos').get());
+        const consumosSnapshot = await leer(db.collection('consumos'));
         consumos = consumosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const fondoCambioDoc = await leer(db.collection('config').doc('fondoCambio').get());
+        const fondoCambioDoc = await leer(db.collection('config').doc('fondoCambio'));
         saldoFondoCambio = fondoCambioDoc.exists ? Number(fondoCambioDoc.data().saldo || 0) : 0;
     } catch (error) { console.error('Error cargando datos:', error); }
 }
