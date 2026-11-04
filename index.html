@@ -486,10 +486,16 @@
                     <div id="seccionCajaAdmin" style="display:none;">
                         <div class="seccion-colapsable">
                             <div class="seccion-header" onclick="toggleSeccion('seccionHistorialCaja')">
-                                <h3>📜 Historial de Aperturas de Caja</h3>
+                                <h3>📜 Historial de Aperturas y Cierres</h3>
                                 <span class="toggle-icon" id="icon-seccionHistorialCaja">▶</span>
                             </div>
                             <div class="seccion-contenido" id="seccionHistorialCaja" style="display:none;">
+                                <p class="info-box">Consulta las aperturas y cierres de caja conservados durante los últimos cinco años.</p>
+                                <div class="filtros-historial-caja">
+                                    <label>Desde <input type="date" id="filtroHistorialCajaDesde" onchange="cargarHistorialCajas()"></label>
+                                    <label>Hasta <input type="date" id="filtroHistorialCajaHasta" onchange="cargarHistorialCajas()"></label>
+                                    <button class="btn-secondary" type="button" onclick="document.getElementById('filtroHistorialCajaDesde').value='';document.getElementById('filtroHistorialCajaHasta').value='';cargarHistorialCajas();">Restablecer período</button>
+                                </div>
                                 <div id="listaHistorialCaja"></div>
                             </div>
                         </div>
