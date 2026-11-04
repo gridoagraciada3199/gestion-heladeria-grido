@@ -3450,10 +3450,12 @@ function cargarHistorialCajas() {
         return;
     }
     const fechaCaja = caja => {
-        const fecha = caja.diaOperativo || caja.fecha || (caja.timestamp
-            ? (caja.timestamp.toDate ? caja.timestamp.toDate() : new Date(caja.timestamp))
-            : null);
-        return normalizarFechaOperativaISO(fecha || '');
+        const fechaRegistrada = caja.diaOperativo || caja.fecha;
+        if (fechaRegistrada) return normalizarFechaOperativaISO(fechaRegistrada);
+        if (!caja.timestamp) return '';
+        const fecha = caja.timestamp.toDate ? caja.timestamp.toDate() : new Date(caja.timestamp);
+        if (isNaN(fecha.getTime())) return '';
+        return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
     };
     const cajasOrdenadas = [...cajas]
         .filter(caja => {
