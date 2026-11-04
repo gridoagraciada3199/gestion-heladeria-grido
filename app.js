@@ -3435,29 +3435,59 @@ function cargarHistorialCajas() {
         lista.innerHTML = '';
         return;
     }
-    if (cajas.length === 0) {
-        lista.innerHTML = '<p class="info-box">No hay aperturas registradas</p>';
+    const desdeInput = document.getElementById('filtroHistorialCajaDesde');
+    const hastaInput = document.getElementById('filtroHistorialCajaHasta');
+    const hoy = obtenerFechaISOOperativa(new Date());
+    const desdeDefault = new Date();
+    desdeDefault.setFullYear(desdeDefault.getFullYear() - 5);
+    const desdeDefaultISO = obtenerFechaISOOperativa(desdeDefault);
+    if (desdeInput && !desdeInput.value) desdeInput.value = desdeDefaultISO;
+    if (hastaInput && !hastaInput.value) hastaInput.value = hoy;
+    const desde = desdeInput?.value || desdeDefaultISO;
+    const hasta = hastaInput?.value || hoy;
+    if (desde && hasta && desde > hasta) {
+        lista.innerHTML = '<p class="info-box">La fecha inicial no puede ser posterior a la fecha final.</p>';
         return;
     }
-    const cajasOrdenadas = [...cajas].sort((a, b) => {
-        const ta = a.timestamp ? (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)) : new Date(0);
-        const tb = b.timestamp ? (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) : new Date(0);
-        return tb - ta;
-    });
-    let html = '';
-    cajasOrdenadas.slice(0, 30).forEach(caja => {
-        html += `
-            <div class="caja-item">
-                <h4>📅 ${caja.fecha || caja.diaOperativo || ''}</h4>
+    const fechaCaja = caja => {
+        const fecha = caja.diaOperativo || caja.fecha || (caja.timestamp
+            ? (caja.timestamp.toDate ? caja.timestamp.toDate() : new Date(caja.timestamp))
+            : null);
+        return normalizarFechaOperativaISO(fecha || '');
+    };
+    const cajasOrdenadas = [...cajas]
+        .filter(caja => {
+            const fecha = fechaCaja(caja);
+            return fecha && fecha >= desde && fecha <= hasta;
+        })
+        .sort((a, b) => fechaCaja(b).localeCompare(fechaCaja(a)));
+    if (!cajasOrdenadas.length) {
+        lista.innerHTML = '<p class="info-box">No hay aperturas o cierres registrados en el período seleccionado.</p>';
+        return;
+    }
+    lista.innerHTML = cajasOrdenadas.map(caja => {
+        const cierre = caja.cierre || null;
+        const diferencia = cierre ? Number(cierre.diferencia || 0) : null;
+        const fecha = fechaCaja(caja);
+        return `
+            <div class="caja-item caja-historica-item">
+                <h4>📅 ${fecha || 'Fecha no disponible'} ${cierre ? '· Caja cerrada' : '· Apertura registrada'}</h4>
                 <div class="detalle">
                     <p>💵 Caja inicial: <strong>${formatearMoneda(caja.montoInicial || 0)}</strong></p>
-                    <p>👤 Registrada por: <strong>${caja.registradaPor || 'Sin registrar'}</strong></p>
+                    <p>👤 Abierta por: <strong>${caja.registradaPor || 'Sin registrar'}</strong></p>
+                    ${cierre ? `
+                        <p>💰 Efectivo contado al cierre: <strong>${formatearMoneda(cierre.efectivoFisico || 0)}</strong></p>
+                        <p>🧮 Caja esperada: <strong>${formatearMoneda(cierre.cajaEsperada || 0)}</strong></p>
+                        <p>📊 Diferencia: <strong class="${diferencia > 0 ? 'caja-diferencia-positiva' : diferencia < 0 ? 'caja-diferencia-negativa' : ''}">${formatearMoneda(diferencia)}</strong></p>
+                        <p>👤 Cerrada por: <strong>${cierre.cerradoPor || 'Sin registrar'}</strong></p>
+                        <p>🕒 Hora de cierre: <strong>${cierre.hora || 'No registrada'}</strong></p>
+                    ` : '<p>⏳ <strong>Sin cierre registrado</strong></p>'}
                 </div>
-                ${caja.notas ? `<p style="margin-top: 10px; font-style: italic; color: #666;">📝 ${caja.notas}</p>` : ''}
+                ${caja.notas ? `<p class="caja-historica-nota">📝 Apertura: ${caja.notas}</p>` : ''}
+                ${cierre?.motivo ? `<p class="caja-historica-nota">📝 Observación del cierre: ${cierre.motivo}</p>` : ''}
             </div>
         `;
-    });
-    lista.innerHTML = html;
+    }).join('');
 }
 
 // ========== GASTOS ==========
@@ -3625,31 +3655,60 @@ async function cargarEvolucionHistorica() {
         const anio = anios.includes(seleccionadoAnterior) ? seleccionadoAnterior : anios[0];
         filtro.innerHTML = anios.map(valor => `<option value="${valor}" ${valor === anio ? 'selected' : ''}>${valor}</option>`).join('');
         const filas = resumenesHistoricos.filter(r => Number(r.anio || String(r.mes).slice(0, 4)) === anio).sort((a, b) => String(a.mes).localeCompare(String(b.mes)));
+        const filasAnterior = resumenesHistoricos.filter(r => Number(r.anio || String(r.mes).slice(0, 4)) === anio - 1);
         const sumar = (lista, campo) => lista.reduce((total, item) => total + Number(item[campo] || 0), 0);
         const totalVentas = sumar(filas, 'ventas');
         const totalGastos = sumar(filas, 'gastos');
         const totalResultado = totalVentas - totalGastos;
-        const filasAnterior = resumenesHistoricos.filter(r => Number(r.anio || String(r.mes).slice(0, 4)) === anio - 1);
-        const ventasAnterior = sumar(filasAnterior, 'ventas');
+        const mesesComparables = new Set(filas.map(r => String(r.mes).slice(5, 7)));
+        const filasAnteriorComparables = filasAnterior.filter(r => mesesComparables.has(String(r.mes).slice(5, 7)));
+        const ventasAnterior = sumar(filasAnteriorComparables, 'ventas');
+        const gastosAnterior = sumar(filasAnteriorComparables, 'gastos');
+        const resultadoAnterior = ventasAnterior - gastosAnterior;
         const variacion = ventasAnterior > 0 ? ((totalVentas - ventasAnterior) / ventasAnterior) * 100 : null;
-        const formatoVariacion = variacion === null ? 'Sin año anterior comparable' : `${variacion >= 0 ? '+' : ''}${variacion.toFixed(1).replace('.', ',')}% frente a ${anio - 1}`;
+        const formatoVariacion = variacion === null ? 'Sin período comparable del año anterior' : `${variacion >= 0 ? '+' : ''}${variacion.toFixed(1).replace('.', ',')}% frente al mismo período de ${anio - 1}`;
         const nombreMes = mes => {
             const [year, month] = String(mes).split('-').map(Number);
             return new Date(year, month - 1, 1).toLocaleDateString('es-UY', { month: 'long' });
         };
+        const maxMensual = Math.max(1, ...filas.map(r => Number(r.ventas || 0)), ...filas.map(r => Number(r.gastos || 0)));
+        const mesesHtml = filas.map(r => {
+            const ventas = Number(r.ventas || 0), gastosMes = Number(r.gastos || 0);
+            const resultado = Number(r.resultado ?? (ventas - gastosMes));
+            return `<div class="evolucion-mes">
+                <div class="evolucion-mes-titulo"><strong>${nombreMes(r.mes)}</strong><span>${Number(r.cantidadCierres || 0)} cierres</span></div>
+                <div class="evolucion-barra-linea"><span>Ventas</span><div class="evolucion-barra-fondo"><div class="evolucion-barra ventas" style="width:${Math.max(0, ventas / maxMensual * 100)}%"></div></div><strong>${formatearMoneda(ventas)}</strong></div>
+                <div class="evolucion-barra-linea"><span>Gastos</span><div class="evolucion-barra-fondo"><div class="evolucion-barra gastos" style="width:${Math.max(0, gastosMes / maxMensual * 100)}%"></div></div><strong>${formatearMoneda(gastosMes)}</strong></div>
+                <div class="evolucion-mes-resultado">Resultado: <strong>${formatearMoneda(resultado)}</strong></div>
+            </div>`;
+        }).join('');
         contenedor.innerHTML = `
             <div class="dashboard-grid">
                 <div class="card"><h3>📈 Ventas ${anio}</h3><p class="stat-number">${formatearMoneda(totalVentas)}</p><p class="stat-label">${formatoVariacion}</p></div>
-                <div class="card"><h3>💸 Gastos ${anio}</h3><p class="stat-number">${formatearMoneda(totalGastos)}</p><p class="stat-label">Registros consolidados del año</p></div>
-                <div class="card"><h3>💰 Resultado</h3><p class="stat-number">${formatearMoneda(totalResultado)}</p><p class="stat-label">Ventas SmartFran menos gastos</p></div>
+                <div class="card"><h3>💸 Gastos ${anio}</h3><p class="stat-number">${formatearMoneda(totalGastos)}</p><p class="stat-label">${filas.length} meses con resumen</p></div>
+                <div class="card"><h3>💰 Resultado</h3><p class="stat-number">${formatearMoneda(totalResultado)}</p><p class="stat-label">Ventas SmartFran menos gastos registrados</p></div>
             </div>
-            <div style="overflow-x:auto;">
+            <div class="evolucion-comparacion">
+                <h3>📊 Comparación con ${anio - 1}</h3>
+                <p>Comparación de los mismos ${mesesComparables.size} mes(es) disponibles en ambos períodos.</p>
+                <div class="evolucion-comparacion-grid">
+                    <div><span>Ventas ${anio}</span><strong>${formatearMoneda(totalVentas)}</strong></div>
+                    <div><span>Ventas ${anio - 1}</span><strong>${formatearMoneda(ventasAnterior)}</strong></div>
+                    <div><span>Gastos ${anio}</span><strong>${formatearMoneda(totalGastos)}</strong></div>
+                    <div><span>Gastos ${anio - 1}</span><strong>${formatearMoneda(gastosAnterior)}</strong></div>
+                    <div><span>Resultado ${anio}</span><strong>${formatearMoneda(totalResultado)}</strong></div>
+                    <div><span>Resultado ${anio - 1}</span><strong>${formatearMoneda(resultadoAnterior)}</strong></div>
+                </div>
+            </div>
+            <h3 style="margin:20px 0 10px;">📅 Evolución mes a mes</h3>
+            <div class="evolucion-meses">${mesesHtml || '<p class="info-box">No hay meses cargados para este año.</p>'}</div>
+            <div style="overflow-x:auto;margin-top:18px;">
                 <table class="tabla-previa">
                     <thead><tr><th>Mes</th><th>Ventas</th><th>Gastos</th><th>Resultado</th><th>Cierres</th></tr></thead>
                     <tbody>${filas.map(r => `<tr><td>${nombreMes(r.mes)}</td><td>${formatearMoneda(r.ventas || 0)}</td><td>${formatearMoneda(r.gastos || 0)}</td><td>${formatearMoneda(r.resultado ?? ((r.ventas || 0) - (r.gastos || 0)))}</td><td>${Number(r.cantidadCierres || 0)}</td></tr>`).join('')}</tbody>
                 </table>
             </div>
-            <p class="info-box">Los resúmenes mensuales se conservan permanentemente, incluso cuando los registros detallados cumplen sus 5 años de conservación. ${filasAnterior.length ? `Comparación anual contra ${anio - 1} disponible.` : ''}</p>
+            <p class="info-box">Los resúmenes mensuales se conservan permanentemente, incluso cuando los registros detallados cumplen sus 5 años de conservación. El resultado mostrado es ventas SmartFran menos gastos registrados; no equivale necesariamente a la ganancia neta contable.</p>
         `;
     } catch (error) {
         console.error('Error cargando evolución histórica:', error);
