@@ -570,3 +570,39 @@ h3 { color: #555; margin: 20px 0 15px 0; font-size: 18px; }
 .fondo-movimiento-importe { white-space: nowrap; color: #16834d; }
 .fondo-movimiento.retiro .fondo-movimiento-importe { color: #d94336; }
 .fondo-movimiento p { color: #555; font-size: 14px; margin: 4px 0; }
+
+
+/* ========== HISTORIAL DE CAJA Y EVOLUCIÓN FINANCIERA ========== */
+.filtros-historial-caja { display:flex; gap:12px; align-items:end; flex-wrap:wrap; margin:12px 0 18px; }
+.filtros-historial-caja label { display:flex; flex-direction:column; gap:5px; font-size:13px; font-weight:700; color:#444; }
+.filtros-historial-caja input { padding:9px; border:1px solid #ccc; border-radius:7px; }
+.caja-historica-item { border-left:4px solid #667eea; }
+.caja-historica-item h4 { display:flex; flex-wrap:wrap; gap:6px; }
+.caja-historica-nota { margin-top:8px; color:#666; font-size:13px; }
+.caja-diferencia-positiva { color:#16834d; }
+.caja-diferencia-negativa { color:#d94336; }
+.evolucion-comparacion { background:#f7f8fc; border:1px solid #e3e6f0; border-radius:12px; padding:16px; margin:18px 0; }
+.evolucion-comparacion h3 { margin:0 0 6px; }
+.evolucion-comparacion p { color:#666; font-size:13px; margin:0 0 12px; }
+.evolucion-comparacion-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+.evolucion-comparacion-grid div { background:white; border-radius:8px; padding:11px; display:flex; flex-direction:column; gap:5px; }
+.evolucion-comparacion-grid span { color:#666; font-size:12px; }
+.evolucion-comparacion-grid strong { font-size:17px; }
+.evolucion-meses { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr)); gap:12px; }
+.evolucion-mes { background:white; border:1px solid #e5e7eb; border-radius:10px; padding:13px; }
+.evolucion-mes-titulo { display:flex; justify-content:space-between; gap:8px; margin-bottom:10px; text-transform:capitalize; }
+.evolucion-mes-titulo span { color:#777; font-size:12px; }
+.evolucion-barra-linea { display:grid; grid-template-columns:52px minmax(40px,1fr) auto; align-items:center; gap:8px; margin:7px 0; font-size:12px; }
+.evolucion-barra-fondo { height:10px; background:#edf0f5; border-radius:10px; overflow:hidden; }
+.evolucion-barra { height:100%; border-radius:10px; }
+.evolucion-barra.ventas { background:#2eaf70; }
+.evolucion-barra.gastos { background:#e36a6a; }
+.evolucion-barra-linea strong { font-size:12px; white-space:nowrap; }
+.evolucion-mes-resultado { border-top:1px solid #eee; padding-top:8px; margin-top:9px; font-size:13px; }
+@media(max-width:600px) {
+ .filtros-historial-caja { align-items:stretch; }
+ .filtros-historial-caja label { width:100%; }
+ .filtros-historial-caja input { width:100%; box-sizing:border-box; }
+ .evolucion-barra-linea { grid-template-columns:48px minmax(25px,1fr); }
+ .evolucion-barra-linea strong { grid-column:2; }
+}
