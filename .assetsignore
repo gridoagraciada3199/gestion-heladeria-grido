@@ -1,5 +1,6 @@
 # Archivos internos del proyecto: no deben publicarse como recursos web
 functions/
+firebase-functions/
 .github/
 .git/
 .wrangler/
