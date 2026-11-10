@@ -28,6 +28,7 @@ let resumenesHistoricosCargados = false;
 let actualizandoResumenesHistoricos = false;
 let guardandoMovimientoCamara = false;
 let registrandoFichaje = false;
+let marcandoPedidoTraido = false;
 
 function inicializarFirebase(config, esPrueba) {
     resumenesHistoricos = [];
@@ -2906,39 +2907,85 @@ async function guardarPedidoCamara() {
 }
 
 async function marcarPedidoTraido(id) {
+    if (marcandoPedidoTraido) return;
+    marcandoPedidoTraido = true;
     try {
-        const pedidoDoc = await db.collection('camaraPedidos').doc(id).get();
-        const pedido = pedidoDoc.data();
-        await db.collection('camaraPedidos').doc(id).update({
-            traido: true,
-            traidoPor: empleadoActual ? empleadoActual.nombre : 'Admin',
-            fechaTraido: new Date().toLocaleString('es-ES')
-        });
-        const cantidad = pedido.cantidad || 0;
-        const productoId = pedido.productoId;
-        if (productoId && cantidad > 0) {
-            const stockActual = stockCamara[productoId] || 0;
-            const nuevoStock = Math.max(0, stockActual - cantidad);
-            stockCamara[productoId] = nuevoStock;
-            await db.collection('config').doc('stockCamara').set({ data: stockCamara });
+        const pedidoRef = db.collection('camaraPedidos').doc(id);
+        const stockRef = db.collection('config').doc('stockCamara');
+        const movimientoRef = db.collection('camaraMovimientos').doc();
+        const fechaMovimiento = new Date();
+        const empleadoNombre = empleadoActual ? empleadoActual.nombre : 'Admin';
+
+        const resultado = await db.runTransaction(async transaction => {
+            const pedidoDoc = await transaction.get(pedidoRef);
+            if (!pedidoDoc.exists) throw new Error('PEDIDO_NO_EXISTE');
+            const pedido = pedidoDoc.data();
+            if (pedido.traido) throw new Error('PEDIDO_YA_TRAIDO');
+
+            const cantidad = Number(pedido.cantidad || 0);
+            const productoId = pedido.productoId;
+            if (!productoId || !Number.isFinite(cantidad) || cantidad <= 0) {
+                throw new Error('PEDIDO_INVALIDO');
+            }
+
+            const stockDoc = await transaction.get(stockRef);
+            const stockActual = stockDoc.exists ? (stockDoc.data().data || {}) : {};
+            const disponible = Number(stockActual[productoId] || 0);
+            if (cantidad > disponible) {
+                const error = new Error('STOCK_INSUFICIENTE');
+                error.disponible = disponible;
+                throw error;
+            }
+
+            const actualizado = { ...stockActual, [productoId]: disponible - cantidad };
             const prod = productos.find(p => p.id === productoId);
-            await db.collection('camaraMovimientos').add({
+            transaction.update(pedidoRef, {
+                traido: true,
+                traidoPor: empleadoNombre,
+                fechaTraido: fechaMovimiento.toLocaleString('es-ES')
+            });
+            transaction.set(stockRef, { data: actualizado }, { merge: true });
+            transaction.set(movimientoRef, {
                 tipo: 'salida',
-                productoId: productoId,
-                cantidad: cantidad,
+                productoId,
+                cantidad,
                 nota: `Retiro por pedido: ${prod ? prod.nombre : productoId}`,
-                empleado: empleadoActual ? empleadoActual.nombre : 'Admin',
-                fecha: new Date().toLocaleString('es-ES'),
-                timestamp: new Date(),
+                empleado: empleadoNombre,
+                fecha: fechaMovimiento.toLocaleString('es-ES'),
+                timestamp: fechaMovimiento,
                 origen: 'pedido_camara'
             });
+            return { actualizado, productoId, cantidad };
+        });
+
+        stockCamara = resultado.actualizado;
+        const pedidoLocal = pedidosCamara.find(p => p.id === id);
+        if (pedidoLocal) {
+            pedidoLocal.traido = true;
+            pedidoLocal.traidoPor = empleadoNombre;
+            pedidoLocal.fechaTraido = fechaMovimiento.toLocaleString('es-ES');
         }
-        await cargarDatosIniciales();
-        cargarPedidosCamara();
+        const prod = productos.find(p => p.id === resultado.productoId);
+        movimientosCamara.push({
+            id: movimientoRef.id, tipo: 'salida', productoId: resultado.productoId,
+            cantidad: resultado.cantidad,
+            nota: `Retiro por pedido: ${prod ? prod.nombre : resultado.productoId}`,
+            empleado: empleadoNombre, fecha: fechaMovimiento.toLocaleString('es-ES'),
+            timestamp: fechaMovimiento, origen: 'pedido_camara'
+        });
+        cargarCamara();
         mostrarToast('✅ Pedido marcado y stock actualizado', 'entrada', 3000);
-    } catch (error) { 
-        console.error('Error:', error); 
-        alert('Error al marcar pedido');
+    } catch (error) {
+        console.error('Error al marcar pedido de cámara:', error);
+        if (error.message === 'STOCK_INSUFICIENTE') {
+            alert(`No hay stock suficiente en la cámara. Disponible: ${error.disponible}.`);
+        } else if (error.message === 'PEDIDO_YA_TRAIDO') {
+            alert('Este pedido ya fue marcado como traído.');
+        } else {
+            alert('No se pudo marcar el pedido. No se modificó el stock; intentá nuevamente.');
+        }
+    } finally {
+        marcandoPedidoTraido = false;
     }
 }
 
