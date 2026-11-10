@@ -26,6 +26,8 @@ let listenersEnVivo = [];
 let resumenesHistoricos = [];
 let resumenesHistoricosCargados = false;
 let actualizandoResumenesHistoricos = false;
+let guardandoMovimientoCamara = false;
+let registrandoFichaje = false;
 
 function inicializarFirebase(config, esPrueba) {
     resumenesHistoricos = [];
@@ -1880,51 +1882,63 @@ function seleccionarTurno(turnoId) {
 
 async function marcarFichaje(accion) {
     if (!empleadoActual) { alert('Debés estar logueado'); return; }
+    // Bloqueo inmediato: evita que un doble clic o dos eventos seguidos creen dos marcas.
+    if (registrandoFichaje) return;
+    registrandoFichaje = true;
 
-    const ahora = new Date();
-    let jornada = obtenerJornadaActivaEmpleado(empleadoActual.id);
-
-    if (accion === 'inicioTurno') {
-        if (jornada) {
-            alert('⚠️ Ya tenés un turno iniciado. Primero terminá ese turno.');
-            return;
-        }
-        if (!turnoSeleccionado) {
-            alert('Seleccioná el turno primero.');
-            return;
-        }
-    } else if (!jornada) {
-        alert('No hay un turno activo para realizar esta marca.');
-        return;
-    }
-
-    if (accion === 'inicioDescanso') {
-        const ultimoInicio = jornada.registros.filter(r => r.accion === 'inicioDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
-        const ultimoFin = jornada.registros.filter(r => r.accion === 'finDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
-        if (ultimoInicio && (!ultimoFin || obtenerTimestampFichaje(ultimoInicio) > obtenerTimestampFichaje(ultimoFin))) {
-            alert('⚠️ Ya tenés un descanso iniciado. Primero finalizalo.');
-            return;
-        }
-    }
-
-    if (accion === 'finDescanso') {
-        const ultimoInicio = jornada.registros.filter(r => r.accion === 'inicioDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
-        const ultimoFin = jornada.registros.filter(r => r.accion === 'finDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
-        if (!ultimoInicio || (ultimoFin && obtenerTimestampFichaje(ultimoFin) > obtenerTimestampFichaje(ultimoInicio))) {
-            alert('No hay un descanso activo para finalizar.');
-            return;
-        }
-    }
-
-    const jornadaId = accion === 'inicioTurno' ? generarJornadaId() : jornada.id;
-    const turnoInfo = accion === 'inicioTurno' ? turnoSeleccionado : {
-        id: jornada.inicio.turno || '',
-        nombre: jornada.turnoNombre || 'Sin turno',
-        inicio: jornada.turnoInicio || '',
-        fin: jornada.turnoFin || ''
-    };
+    const botonesFichaje = Array.from(document.querySelectorAll('.btn-fichaje, #btnFichajePrincipal'));
+    botonesFichaje.forEach(boton => { boton.disabled = true; });
+    let marcaGuardada = false;
 
     try {
+        const ahora = new Date();
+        const jornada = obtenerJornadaActivaEmpleado(empleadoActual.id);
+
+        if (accion === 'inicioTurno') {
+            if (jornada) {
+                alert('⚠️ Ya tenés un turno iniciado. Primero terminá ese turno.');
+                return;
+            }
+            if (!turnoSeleccionado) {
+                alert('Seleccioná el turno primero.');
+                return;
+            }
+        } else if (!jornada) {
+            alert('No hay un turno activo para realizar esta marca.');
+            return;
+        }
+
+        if (accion === 'inicioDescanso') {
+            const ultimoInicio = jornada.registros.filter(r => r.accion === 'inicioDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+            const ultimoFin = jornada.registros.filter(r => r.accion === 'finDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+            if (ultimoInicio && (!ultimoFin || obtenerTimestampFichaje(ultimoInicio) > obtenerTimestampFichaje(ultimoFin))) {
+                alert('⚠️ Ya tenés un descanso iniciado. Primero finalizalo.');
+                return;
+            }
+        }
+
+        if (accion === 'finDescanso') {
+            const ultimoInicio = jornada.registros.filter(r => r.accion === 'inicioDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+            const ultimoFin = jornada.registros.filter(r => r.accion === 'finDescanso').sort((a,b) => (obtenerTimestampFichaje(b)?.getTime()||0) - (obtenerTimestampFichaje(a)?.getTime()||0))[0];
+            if (!ultimoInicio || (ultimoFin && obtenerTimestampFichaje(ultimoFin) > obtenerTimestampFichaje(ultimoInicio))) {
+                alert('No hay un descanso activo para finalizar.');
+                return;
+            }
+        }
+
+        if (!['inicioTurno', 'inicioDescanso', 'finDescanso', 'finTurno'].includes(accion)) {
+            alert('La marca solicitada no es válida.');
+            return;
+        }
+
+        const jornadaId = accion === 'inicioTurno' ? generarJornadaId() : jornada.id;
+        const turnoInfo = accion === 'inicioTurno' ? turnoSeleccionado : {
+            id: jornada.inicio.turno || '',
+            nombre: jornada.turnoNombre || 'Sin turno',
+            inicio: jornada.turnoInicio || '',
+            fin: jornada.turnoFin || ''
+        };
+
         await db.collection('fichajes').add({
             empleadoId: empleadoActual.id,
             empleadoNombre: empleadoActual.nombre,
@@ -1939,6 +1953,7 @@ async function marcarFichaje(accion) {
             turnoInicio: turnoInfo?.inicio || '',
             turnoFin: turnoInfo?.fin || ''
         });
+        marcaGuardada = true;
 
         const mensajes = {
             inicioTurno: `▶️ Turno iniciado a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
@@ -1948,13 +1963,15 @@ async function marcarFichaje(accion) {
         };
         mostrarToast(mensajes[accion] || '✅ Marca registrada', accion === 'finTurno' ? 'salida' : 'entrada', 4000);
         await cargarDatosIniciales();
-        cargarFichaje();
     } catch (error) {
         console.error('Error:', error);
-        alert('Error al registrar la marca.');
+        alert('Error al registrar la marca. Revisá la conexión antes de volver a intentarlo.');
+    } finally {
+        registrandoFichaje = false;
+        // Reconstruye el panel con el estado actualizado y vuelve a habilitar el botón correcto.
+        cargarFichaje();
     }
 }
-
 function obtenerRangoFichajeAdmin() {
     const mes = document.getElementById('filtroFichajeMes')?.value;
     let desde = document.getElementById('filtroFichajeFechaDesde')?.value;
@@ -2934,28 +2951,72 @@ async function eliminarPedidoCamara(id) {
     }
 }
 async function guardarMovimientoCamara() {
+    if (guardandoMovimientoCamara) return;
+
     const tipo = document.getElementById('movimientoTipo').value;
     const productoId = document.getElementById('movimientoProducto').value;
     const cantidad = parseFloat(document.getElementById('movimientoCantidad').value);
     const nota = document.getElementById('movimientoNota').value;
-    if (!productoId || isNaN(cantidad) || cantidad <= 0) { alert('Seleccioná producto y cantidad'); return; }
+    if (!['entrada', 'salida'].includes(tipo)) { alert('Seleccioná un tipo de movimiento válido.'); return; }
+    if (!productoId || !Number.isFinite(cantidad) || cantidad <= 0) { alert('Seleccioná producto y una cantidad mayor a cero.'); return; }
+
+    guardandoMovimientoCamara = true;
+    const boton = document.querySelector('#seccionMovimientosCamara button');
+    if (boton) boton.disabled = true;
+    const fechaMovimiento = new Date();
+    const saldoRef = db.collection('config').doc('stockCamara');
+    const movimientoRef = db.collection('camaraMovimientos').doc();
+
     try {
-        await db.collection('camaraMovimientos').add({
-            tipo, productoId, cantidad, nota: nota || '',
-            empleado: empleadoActual ? empleadoActual.nombre : 'Admin',
-            fecha: new Date().toLocaleString('es-ES'), timestamp: new Date()
+        const nuevoStock = await db.runTransaction(async transaction => {
+            const stockDoc = await transaction.get(saldoRef);
+            const stockActual = stockDoc.exists ? (stockDoc.data().data || {}) : {};
+            const disponible = Number(stockActual[productoId] || 0);
+
+            if (tipo === 'salida' && cantidad > disponible) {
+                const error = new Error('STOCK_INSUFICIENTE');
+                error.disponible = disponible;
+                throw error;
+            }
+
+            const actualizado = { ...stockActual };
+            actualizado[productoId] = tipo === 'entrada'
+                ? disponible + cantidad
+                : disponible - cantidad;
+
+            transaction.set(saldoRef, { data: actualizado }, { merge: true });
+            transaction.set(movimientoRef, {
+                tipo, productoId, cantidad, nota: nota || '',
+                empleado: empleadoActual ? empleadoActual.nombre : 'Admin',
+                fecha: fechaMovimiento.toLocaleString('es-ES'),
+                timestamp: fechaMovimiento
+            });
+            return actualizado;
         });
-        if (tipo === 'entrada') stockCamara[productoId] = (stockCamara[productoId] || 0) + cantidad;
-        else stockCamara[productoId] = Math.max(0, (stockCamara[productoId] || 0) - cantidad);
-        await db.collection('config').doc('stockCamara').set({ data: stockCamara });
+
+        stockCamara = nuevoStock;
+        movimientosCamara.push({
+            id: movimientoRef.id, tipo, productoId, cantidad, nota: nota || '',
+            empleado: empleadoActual ? empleadoActual.nombre : 'Admin',
+            fecha: fechaMovimiento.toLocaleString('es-ES'), timestamp: fechaMovimiento
+        });
         document.getElementById('buscadorMovimiento').value = '';
         document.getElementById('movimientoProducto').value = '';
         document.getElementById('movimientoCantidad').value = '';
         document.getElementById('movimientoNota').value = '';
-        await cargarDatosIniciales();
         cargarCamara();
-        alert('✅ Movimiento registrado');
-    } catch (error) { console.error('Error:', error); }
+        mostrarToast('✅ Movimiento registrado', tipo === 'entrada' ? 'entrada' : 'salida', 3000);
+    } catch (error) {
+        console.error('Error registrando movimiento de cámara:', error);
+        if (error.message === 'STOCK_INSUFICIENTE') {
+            alert(`No hay stock suficiente en la cámara. Disponible: ${error.disponible}.`);
+        } else {
+            alert('No se pudo registrar el movimiento. No se modificó el stock; intentá nuevamente.');
+        }
+    } finally {
+        guardandoMovimientoCamara = false;
+        if (boton) boton.disabled = false;
+    }
 }
 
 function cargarStockCamara() {
