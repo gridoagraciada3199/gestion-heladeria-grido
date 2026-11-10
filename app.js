@@ -1888,7 +1888,6 @@ async function marcarFichaje(accion) {
 
     const botonesFichaje = Array.from(document.querySelectorAll('.btn-fichaje, #btnFichajePrincipal'));
     botonesFichaje.forEach(boton => { boton.disabled = true; });
-    let marcaGuardada = false;
 
     try {
         const ahora = new Date();
@@ -1939,7 +1938,7 @@ async function marcarFichaje(accion) {
             fin: jornada.turnoFin || ''
         };
 
-        await db.collection('fichajes').add({
+        const datosMarca = {
             empleadoId: empleadoActual.id,
             empleadoNombre: empleadoActual.nombre,
             accion,
@@ -1952,8 +1951,11 @@ async function marcarFichaje(accion) {
             turnoNombre: turnoInfo?.nombre || 'Sin turno',
             turnoInicio: turnoInfo?.inicio || '',
             turnoFin: turnoInfo?.fin || ''
-        });
-        marcaGuardada = true;
+        };
+        const fichajeRef = db.collection('fichajes').doc();
+        await fichajeRef.set(datosMarca);
+        // Actualiza el estado local inmediatamente; no depende de esperar al listener de Firestore.
+        fichajes.push({ id: fichajeRef.id, ...datosMarca });
 
         const mensajes = {
             inicioTurno: `▶️ Turno iniciado a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
@@ -1962,7 +1964,6 @@ async function marcarFichaje(accion) {
             finTurno: `⏹️ Turno terminado a las ${ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
         };
         mostrarToast(mensajes[accion] || '✅ Marca registrada', accion === 'finTurno' ? 'salida' : 'entrada', 4000);
-        await cargarDatosIniciales();
     } catch (error) {
         console.error('Error:', error);
         alert('Error al registrar la marca. Revisá la conexión antes de volver a intentarlo.');
