@@ -619,9 +619,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 async function cargarDatosIniciales() {
     try {
-        // Durante una sesión activa, los listeners ya mantienen la caché local sincronizada.
-        // Leer desde caché evita volver a descargar todas las colecciones después de cada operación.
-        const leer = referencia => listenersEnVivo.length > 0 ? referencia.get({ source: 'cache' }) : referencia.get();
+        // Los listeners activos mantienen la caché local sincronizada durante la sesión.
+        const leer = referencia => listenersEnVivo.length > 0
+            ? referencia.get({ source: 'cache' })
+            : referencia.get();
+
+        // Datos comunes: necesarios para preparar el acceso y para las pantallas operativas.
         const productosSnapshot = await leer(db.collection('productos'));
         productos = productosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const empleadosSnapshot = await leer(db.collection('empleados'));
@@ -642,33 +645,55 @@ async function cargarDatosIniciales() {
         tareasCompletadas = tareasCompDoc.exists ? tareasCompDoc.data().data : {};
         const eventosSnapshot = await leer(db.collection('eventos'));
         eventos = eventosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const historialSnapshot = await leer(db.collection('historialConteos'));
-        historialConteos = historialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const pedidosCamaraSnapshot = await leer(db.collection('camaraPedidos'));
         pedidosCamara = pedidosCamaraSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const movimientosCamaraSnapshot = await leer(db.collection('camaraMovimientos'));
         movimientosCamara = movimientosCamaraSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const cierresSnapshot = await leer(db.collection('cierres'));
-        cierres = cierresSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const cajasSnapshot = await leer(db.collection('cajas'));
-        cajas = cajasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const gastosSnapshot = await leer(db.collection('gastos'));
-        gastos = gastosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const ventasSmartFranSnapshot = await leer(db.collection('ventasSmartFran'));
-        ventasSmartFran = ventasSmartFranSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const avisosSnapshot = await leer(db.collection('avisos'));
         avisos = avisosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const fichajesSnapshot = await leer(db.collection('fichajes'));
-        fichajes = fichajesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const turnosSnapshot = await leer(db.collection('turnos'));
         turnos = turnosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const consumosSnapshot = await leer(db.collection('consumos'));
-        consumos = consumosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const fondoCambioDoc = await leer(db.collection('config').doc('fondoCambio'));
         saldoFondoCambio = fondoCambioDoc.exists ? Number(fondoCambioDoc.data().saldo || 0) : 0;
-    } catch (error) { console.error('Error cargando datos:', error); }
-}
 
+        // Antes del ingreso no se descargan historiales ni información personal.
+        historialConteos = [];
+        cajas = [];
+        gastos = [];
+        ventasSmartFran = [];
+        cierres = [];
+        fichajes = [];
+        consumos = [];
+
+        if (modoActual === 'admin') {
+            const historialSnapshot = await leer(db.collection('historialConteos'));
+            historialConteos = historialSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const cierresSnapshot = await leer(db.collection('cierres'));
+            cierres = cierresSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const cajasSnapshot = await leer(db.collection('cajas'));
+            cajas = cajasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const gastosSnapshot = await leer(db.collection('gastos'));
+            gastos = gastosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const ventasSmartFranSnapshot = await leer(db.collection('ventasSmartFran'));
+            ventasSmartFran = ventasSmartFranSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const fichajesSnapshot = await leer(db.collection('fichajes'));
+            fichajes = fichajesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const consumosSnapshot = await leer(db.collection('consumos'));
+            consumos = consumosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } else if (modoActual === 'empleado' && empleadoActual) {
+            const [cierresSnapshot, fichajesSnapshot, consumosSnapshot] = await Promise.all([
+                leer(db.collection('cierres').where('empleadoId', '==', empleadoActual.id)),
+                leer(db.collection('fichajes').where('empleadoId', '==', empleadoActual.id)),
+                leer(db.collection('consumos').where('empleadoId', '==', empleadoActual.id))
+            ]);
+            cierres = cierresSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            fichajes = fichajesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            consumos = consumosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        }
+    } catch (error) {
+        console.error('Error cargando datos:', error);
+    }
+}
 async function verificarReinicioDiario() {
     const ahora = new Date();
     // El día operativo de la tienda va de 06:00 a 05:59 del día siguiente.
@@ -778,12 +803,13 @@ function toggleVerPassword() {
     input.focus();
 }
 
-function ingresarAdmin() {
+async function ingresarAdmin() {
     const password = document.getElementById('inputPasswordAdmin').value;
     if (password === PASSWORD_ADMIN) {
         document.getElementById('inputPasswordAdmin').value = '';
         modoActual = 'admin';
         empleadoActual = null;
+        await cargarDatosIniciales();
         mostrarApp();
     } else if (password === '') {
         alert('Ingresá la contraseña');
@@ -822,9 +848,9 @@ async function ingresarAdminPrueba() {
     if (password === PASSWORD_ADMIN) {
         document.getElementById('inputPasswordPrueba').value = '';
         inicializarFirebase(firebaseConfigPruebas, true);
-        await cargarDatosIniciales();
         modoActual = 'admin';
         empleadoActual = null;
+        await cargarDatosIniciales();
         mostrarApp();
     } else if (password === '') {
         alert('Ingresá la contraseña');
@@ -866,7 +892,7 @@ function volverAlLogin() {
     }
 }
 
-function entrarEmpleado() {
+async function entrarEmpleado() {
     const empleadoId = document.getElementById('selectEmpleado').value;
     if (!empleadoId) { alert('Por favor selecciona tu nombre'); return; }
     const empleado = empleados.find(e => e.id === empleadoId);
@@ -883,16 +909,20 @@ function entrarEmpleado() {
 
     empleadoActual = empleado;
     modoActual = 'empleado';
+    await cargarDatosIniciales();
     mostrarApp();
 }
 
 async function entrarPruebaEmpleado() {
     inicializarFirebase(firebaseConfigPruebas, true);
+    modoActual = null;
+    empleadoActual = null;
     await cargarDatosIniciales();
     cargarSelectEmpleados();
     if (empleados.length > 0) {
         empleadoActual = empleados[0];
         modoActual = 'empleado';
+        await cargarDatosIniciales();
         mostrarApp();
     } else {
         alert('No hay empleados en el entorno de pruebas.');
@@ -916,6 +946,8 @@ async function salir() {
     ultimoCierreConocido = null;
     if (modoPrueba) {
         inicializarFirebase(firebaseConfigReal, false);
+        modoActual = null;
+        empleadoActual = null;
         await cargarDatosIniciales();
         cargarSelectEmpleados();
     }
