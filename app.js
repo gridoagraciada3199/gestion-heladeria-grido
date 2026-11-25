@@ -28,9 +28,11 @@ let resumenesHistoricosCargados = false;
 let actualizandoResumenesHistoricos = false;
 let guardandoMovimientoCamara = false;
 let registrandoFichaje = false;
+let reinicioDiarioVerificado = false;
 let marcandoPedidoTraido = false;
 
 function inicializarFirebase(config, esPrueba) {
+    reinicioDiarioVerificado = false;
     resumenesHistoricos = [];
     resumenesHistoricosCargados = false;
     if (firebase.apps.length > 0) {
@@ -710,6 +712,7 @@ async function cargarDatosIniciales() {
     }
 }
 async function verificarReinicioDiario() {
+    if (reinicioDiarioVerificado) return;
     const ahora = new Date();
     // El día operativo de la tienda va de 06:00 a 05:59 del día siguiente.
     // De esta forma, las tareas marcadas durante la madrugada siguen perteneciendo
@@ -727,7 +730,10 @@ async function verificarReinicioDiario() {
             await db.collection('config').doc('tareasCompletadas').set({ data: {} });
             tareasCompletadas = {};
             await db.collection('config').doc('ultimoDia').set({ fecha: diaOperativoTexto });
+            reinicioDiarioVerificado = true;
             await limpiarHistorialViejo();
+        } else {
+            reinicioDiarioVerificado = true;
         }
     } catch (error) { console.error('Error:', error); }
 }
@@ -737,7 +743,7 @@ async function limpiarHistorialViejo() {
         const hoy = new Date();
         await limpiarColeccionPorFecha('historialConteos', 30, 'timestamp');
         await limpiarColeccionPorFecha('camaraMovimientos', 30, 'timestamp');
-        const pedidosSnap = await db.collection('camaraPedidos').get();
+        const pedidosSnap = await db.collection('camaraPedidos').where('traido', '==', true).get();
         const batchPedidos = db.batch();
         let pedidosBorrados = 0;
         pedidosSnap.docs.forEach(doc => {
@@ -757,7 +763,7 @@ async function limpiarHistorialViejo() {
         await limpiarColeccionPorFecha('gastos', 1825, 'timestamp');
         // 🎁 NUEVO: limpiar consumos de más de 45 días
         await limpiarColeccionPorFecha('consumos', 45, 'timestamp');
-        const avisosSnap = await db.collection('avisos').get();
+        const avisosSnap = await db.collection('avisos').where('vencimiento', '!=', null).get();
         const batchAvisos = db.batch();
         let avisosBorrados = 0;
         avisosSnap.docs.forEach(doc => {
@@ -775,17 +781,34 @@ async function limpiarHistorialViejo() {
 async function limpiarColeccionPorFecha(coleccion, dias, campoFecha) {
     const fechaLimite = new Date();
     fechaLimite.setDate(fechaLimite.getDate() - dias);
-    const snapshot = await db.collection(coleccion).get();
-    const batch = db.batch();
-    let contador = 0;
-    snapshot.docs.forEach(doc => {
+    const referencia = db.collection(coleccion);
+    const limiteTimestamp = firebase.firestore.Timestamp.fromDate(fechaLimite);
+
+    // Los registros actuales guardan Date/Timestamp. Los valores de texto
+    // heredados se consultan aparte para conservar la limpieza histórica.
+    const [snapshotTimestamp, snapshotTexto] = await Promise.all([
+        referencia.where(campoFecha, '<', limiteTimestamp).get(),
+        referencia.where(campoFecha, '>=', '').get()
+    ]);
+    const documentos = new Map();
+    snapshotTimestamp.docs.forEach(doc => documentos.set(doc.id, doc));
+    snapshotTexto.docs.forEach(doc => documentos.set(doc.id, doc));
+
+    const paraEliminar = [];
+    documentos.forEach(doc => {
         const data = doc.data();
         let fecha;
         if (data[campoFecha] && data[campoFecha].toDate) fecha = data[campoFecha].toDate();
         else if (data[campoFecha]) fecha = new Date(data[campoFecha]);
-        if (fecha && fecha < fechaLimite) { batch.delete(doc.ref); contador++; }
+        if (fecha && !isNaN(fecha.getTime()) && fecha < fechaLimite) paraEliminar.push(doc.ref);
     });
-    if (contador > 0) await batch.commit();
+
+    // Firestore limita cada batch a 500 escrituras.
+    for (let i = 0; i < paraEliminar.length; i += 450) {
+        const batch = db.batch();
+        paraEliminar.slice(i, i + 450).forEach(ref => batch.delete(ref));
+        await batch.commit();
+    }
 }
 
 function cargarSelectEmpleados() {
@@ -2280,14 +2303,15 @@ async function guardarTurno() {
     try {
         if (idEditar) {
             await db.collection('turnos').doc(idEditar).update({ nombre, inicio, fin, dias });
+            const indice = turnos.findIndex(turno => turno.id === idEditar);
+            if (indice >= 0) turnos[indice] = { ...turnos[indice], nombre, inicio, fin, dias };
             alert('✅ Turno actualizado');
         } else {
-            await db.collection('turnos').add({ nombre, inicio, fin, dias });
+            const nuevoTurno = await db.collection('turnos').add({ nombre, inicio, fin, dias });
+            turnos.push({ id: nuevoTurno.id, nombre, inicio, fin, dias });
             alert('✅ Turno creado');
         }
         ocultarFormularioTurno();
-        const turnosSnap = await db.collection('turnos').get();
-        turnos = turnosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         cargarTurnos();
     } catch (error) {
         console.error('Error:', error);
@@ -2301,8 +2325,7 @@ async function eliminarTurno(id) {
     if (!confirm('¿Eliminar este turno?')) return;
     try {
         await db.collection('turnos').doc(id).delete();
-        const turnosSnap = await db.collection('turnos').get();
-        turnos = turnosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        turnos = turnos.filter(turno => turno.id !== id);
         cargarTurnos();
         alert('✅ Turno eliminado');
     } catch (error) {
@@ -2484,14 +2507,13 @@ async function marcarAvisoLeido(avisoId) {
     if (!empleadoActual) return;
     try {
         const avisoRef = db.collection('avisos').doc(avisoId);
-        const avisoDoc = await avisoRef.get();
-        const aviso = avisoDoc.data();
-        if (!aviso.vistos) aviso.vistos = [];
-        if (!aviso.vistos.includes(empleadoActual.id)) {
-            aviso.vistos.push(empleadoActual.id);
-            await avisoRef.update({ vistos: aviso.vistos });
+        await avisoRef.update({
+            vistos: firebase.firestore.FieldValue.arrayUnion(empleadoActual.id)
+        });
+        const avisoLocal = avisos.find(aviso => aviso.id === avisoId);
+        if (avisoLocal) {
+            avisoLocal.vistos = [...new Set([...(avisoLocal.vistos || []), empleadoActual.id])];
         }
-        await cargarDatosIniciales();
         cargarAvisos();
         actualizarIndicadorAvisosUrgentes();
     } catch (error) { console.error('Error:', error); }
@@ -2612,11 +2634,13 @@ async function cargarHistorialTareasAdmin() {
     const fechaFiltro = filtro ? filtro.value : '';
 
     try {
-        const snapshot = await db.collection('historialTareas').get();
+        const consultaHistorial = fechaFiltro
+            ? db.collection('historialTareas').where('fecha', '==', fechaFiltro)
+            : db.collection('historialTareas');
+        const snapshot = await consultaHistorial.get();
         const registros = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        const completadasDoc = await db.collection('config').doc('tareasCompletadas').get();
-        const completadasActuales = completadasDoc.exists ? (completadasDoc.data().data || {}) : {};
+        const completadasActuales = tareasCompletadas || {};
 
         const existentes = new Set(registros.map(r =>
             String(r.fecha || '') + '|' + String(r.empleadoId || r.empleado || '') + '|' + String(r.tareaId || '') + '|' + String(r.hora || '')
@@ -5019,7 +5043,7 @@ async function limpiarHistorialManual(coleccion, dias) {
 async function limpiarPedidosCamaraTraidos() {
     if (!confirm('¿Borrar TODOS los pedidos traídos?')) return;
     try {
-        const pedidosSnap = await db.collection('camaraPedidos').get();
+        const pedidosSnap = await db.collection('camaraPedidos').where('traido', '==', true).get();
         const batch = db.batch();
         let contador = 0;
         pedidosSnap.docs.forEach(doc => {
