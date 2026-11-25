@@ -1014,7 +1014,7 @@ async function entrarPruebaEmpleado() {
     if (empleados.length > 0) {
         empleadoActual = empleados[0];
         modoActual = 'empleado';
-        await cargarDatosIniciales();
+        await iniciarSincronizacionEnVivo();
         await verificarReinicioDiario();
         mostrarApp();
     } else {
