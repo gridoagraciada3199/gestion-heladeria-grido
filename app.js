@@ -225,54 +225,24 @@ let ultimoAvisoConocido = null;
 let ultimoPedidoConocido = null;
 let ultimoCierreConocido = null;
 
-function iniciarListenersTiempoReal() {
-    listenersActivos.forEach(unsub => { try { unsub(); } catch(e) {} });
-    listenersActivos = [];
-    
-    const unsubAvisos = db.collection('avisos').orderBy('fechaCreacion', 'desc').limit(1).onSnapshot(snapshot => {
-        snapshot.docChanges().forEach(change => {
-            if (change.type === 'added' && ultimoAvisoConocido !== null) {
-                const aviso = change.doc.data();
-                if (aviso.prioridad === 'urgente') {
-                    const creador = aviso.creador || '';
-                    const actual = empleadoActual ? empleadoActual.nombre : 'Admin';
-                    if (creador !== actual) dispararNotificacion('🚨 Aviso Urgente', aviso.titulo, 'urgente');
-                }
-            }
-        });
-        if (!snapshot.empty) ultimoAvisoConocido = snapshot.docs[0].id;
-        actualizarIndicadorAvisosUrgentes();
-    });
-    listenersActivos.push(unsubAvisos);
-    
-    const unsubPedidos = db.collection('camaraPedidos').orderBy('fecha', 'desc').limit(1).onSnapshot(snapshot => {
-        snapshot.docChanges().forEach(change => {
-            if (change.type === 'added' && ultimoPedidoConocido !== null) {
-                const pedido = change.doc.data();
-                const prod = productos.find(p => p.id === pedido.productoId);
-                const nombreProd = prod ? prod.nombre : 'Producto';
-                const empleado = pedido.empleado || 'Alguien';
-                const actual = empleadoActual ? empleadoActual.nombre : 'Admin';
-                if (empleado !== actual) dispararNotificacion('📋 Nuevo Pedido', `${empleado} pidió ${pedido.cantidad} ${nombreProd}`, 'pedido');
-            }
-        });
-        if (!snapshot.empty) ultimoPedidoConocido = snapshot.docs[0].id;
-    });
-    listenersActivos.push(unsubPedidos);
-    
-    const unsubCierres = db.collection('cierres').orderBy('timestamp', 'desc').limit(1).onSnapshot(snapshot => {
-        snapshot.docChanges().forEach(change => {
-            if (change.type === 'added' && ultimoCierreConocido !== null) {
-                const cierre = change.doc.data();
-                if (modoActual === 'admin' && Math.abs(cierre.diferencia || 0) > 0.01) {
-                    const difTexto = cierre.diferencia > 0 ? `Sobra ${formatearMoneda(cierre.diferencia)}` : `Falta ${formatearMoneda(Math.abs(cierre.diferencia))}`;
-                    dispararNotificacion('💰 Diferencia en Caja', `Turno #${cierre.numero}: ${difTexto}`, 'alerta');
-                }
-            }
-        });
-        if (!snapshot.empty) ultimoCierreConocido = snapshot.docs[0].id;
-    });
-    listenersActivos.push(unsubCierres);
+// Devuelve el documento más reciente según el mismo campo usado por el listener de notificaciones.
+function obtenerDocumentoMasReciente(snapshot, campo) {
+    if (snapshot.empty) return null;
+    return snapshot.docs.reduce((masReciente, doc) => {
+        if (!masReciente) return doc;
+        const valor = doc.get(campo);
+        const valorActual = masReciente.get(campo);
+        const normalizar = dato => {
+            if (dato && typeof dato.toMillis === 'function') return dato.toMillis();
+            if (dato instanceof Date) return dato.getTime();
+            return dato;
+        };
+        const a = normalizar(valor);
+        const b = normalizar(valorActual);
+        if (a == null) return masReciente;
+        if (b == null) return doc;
+        return a > b ? doc : masReciente;
+    }, null);
 }
 
 // ========== SINCRONIZACIÓN EN VIVO ==========
@@ -385,6 +355,18 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubEventos);
     
     const unsubPedidosCamara = db.collection('camaraPedidos').onSnapshot(snapshot => {
+        const pedidoMasReciente = obtenerDocumentoMasReciente(snapshot, 'fecha');
+        snapshot.docChanges().forEach(change => {
+            if (change.type === 'added' && ultimoPedidoConocido !== null && pedidoMasReciente && change.doc.id === pedidoMasReciente.id) {
+                const pedido = change.doc.data();
+                const prod = productos.find(p => p.id === pedido.productoId);
+                const nombreProd = prod ? prod.nombre : 'Producto';
+                const empleado = pedido.empleado || 'Alguien';
+                const actual = empleadoActual ? empleadoActual.nombre : 'Admin';
+                if (empleado !== actual) dispararNotificacion('📋 Nuevo Pedido', `${empleado} pidió ${pedido.cantidad} ${nombreProd}`, 'pedido');
+            }
+        });
+        if (pedidoMasReciente) ultimoPedidoConocido = pedidoMasReciente.id;
         pedidosCamara = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'camara') cargarPedidosCamara();
@@ -402,6 +384,17 @@ function iniciarSincronizacionEnVivo() {
         ? db.collection('cierres')
         : db.collection('cierres').where('empleadoId', '==', empleadoActual.id);
     const unsubCierres = consultaCierres.onSnapshot(snapshot => {
+        const cierreMasReciente = modoActual === 'admin' ? obtenerDocumentoMasReciente(snapshot, 'timestamp') : null;
+        snapshot.docChanges().forEach(change => {
+            if (modoActual === 'admin' && change.type === 'added' && ultimoCierreConocido !== null && cierreMasReciente && change.doc.id === cierreMasReciente.id) {
+                const cierre = change.doc.data();
+                if (Math.abs(cierre.diferencia || 0) > 0.01) {
+                    const difTexto = cierre.diferencia > 0 ? `Sobra ${formatearMoneda(cierre.diferencia)}` : `Falta ${formatearMoneda(Math.abs(cierre.diferencia))}`;
+                    dispararNotificacion('💰 Diferencia en Caja', `Turno #${cierre.numero}: ${difTexto}`, 'alerta');
+                }
+            }
+        });
+        if (modoActual === 'admin' && cierreMasReciente) ultimoCierreConocido = cierreMasReciente.id;
         cierres = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva) {
@@ -441,6 +434,18 @@ function iniciarSincronizacionEnVivo() {
     }
     
     const unsubAvisos = db.collection('avisos').onSnapshot(snapshot => {
+        const avisoMasReciente = obtenerDocumentoMasReciente(snapshot, 'fechaCreacion');
+        snapshot.docChanges().forEach(change => {
+            if (change.type === 'added' && ultimoAvisoConocido !== null && avisoMasReciente && change.doc.id === avisoMasReciente.id) {
+                const aviso = change.doc.data();
+                if (aviso.prioridad === 'urgente') {
+                    const creador = aviso.creador || '';
+                    const actual = empleadoActual ? empleadoActual.nombre : 'Admin';
+                    if (creador !== actual) dispararNotificacion('🚨 Aviso Urgente', aviso.titulo, 'urgente');
+                }
+            }
+        });
+        if (avisoMasReciente) ultimoAvisoConocido = avisoMasReciente.id;
         avisos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'avisos') cargarAvisos();
@@ -1011,7 +1016,6 @@ function mostrarApp() {
     actualizarEstadoBotonNotif();
     // Si FCM ya generó el token antes del ingreso, asociarlo ahora al usuario.
     if (window.fcmToken) guardarTokenFCM(window.fcmToken);
-    iniciarListenersTiempoReal();
     iniciarSincronizacionEnVivo();
     if (notificacionesActivas && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
     cargarTareas(); cargarCalendario(); cargarAvisos();
