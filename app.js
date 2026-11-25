@@ -271,7 +271,7 @@ async function iniciarSincronizacionEnVivo() {
     });
     
     const unsubProductos = db.collection('productos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Productos');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Productos');
         productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva) {
@@ -286,7 +286,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubProductos);
     
     const unsubStock = db.collection('config').doc('stock').onSnapshot(doc => {
-        marcarSnapshotInicial('Stock');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Stock');
         stock = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && (tabActiva.id === 'dashboard' || tabActiva.id === 'conteo' || tabActiva.id === 'camara' || tabActiva.id === 'gestion' || tabActiva.id === 'reposicion')) {
@@ -300,7 +300,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubStock);
     
     const unsubReferenciasReposicion = db.collection('config').doc('referenciasReposicion').onSnapshot(doc => {
-        marcarSnapshotInicial('ReferenciasReposicion');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('ReferenciasReposicion');
         referenciasReposicion = doc.exists ? (doc.data().data || {}) : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'reposicion') cargarReposicion();
@@ -308,7 +308,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubReferenciasReposicion);
 
     const unsubStockCamara = db.collection('config').doc('stockCamara').onSnapshot(doc => {
-        marcarSnapshotInicial('StockCamara');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('StockCamara');
         stockCamara = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'camara') cargarStockCamara();
@@ -316,7 +316,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubStockCamara);
 
     const unsubNotasConteo = db.collection('config').doc('notasConteo').onSnapshot(doc => {
-        marcarSnapshotInicial('NotasConteo');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('NotasConteo');
         notasConteo = doc.exists ? (doc.data().data || {}) : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'conteo') cargarConteo();
@@ -324,7 +324,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubNotasConteo);
 
     const unsubNotasPedidos = db.collection('config').doc('notasPedidos').onSnapshot(doc => {
-        marcarSnapshotInicial('NotasPedidos');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('NotasPedidos');
         notasPedidos = doc.exists ? (doc.data().data || {}) : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'gestion' && document.getElementById('formularioPedido')?.style.display !== 'none') renderProductosPedido();
@@ -332,7 +332,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubNotasPedidos);
     
     const unsubTareas = db.collection('tareas').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Tareas');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Tareas');
         tareas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'tareas') cargarTareas();
@@ -341,7 +341,7 @@ async function iniciarSincronizacionEnVivo() {
     
     // 🔧 🔑 🔑 🔑 LISTENER CORREGIDO: tareasCompletadas 🔑 🔑 🔑
     const unsubTareasComp = db.collection('config').doc('tareasCompletadas').onSnapshot(doc => {
-        marcarSnapshotInicial('TareasComp');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('TareasComp');
         tareasCompletadas = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'tareas') {
@@ -370,14 +370,14 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubTareasComp);
     
     const unsubEmpleados = db.collection('empleados').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Empleados');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Empleados');
         empleados = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         cargarSelectEmpleados();
     });
     listenersEnVivo.push(unsubEmpleados);
     
     const unsubEventos = db.collection('eventos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Eventos');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Eventos');
         eventos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'calendario') cargarCalendario();
@@ -385,7 +385,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubEventos);
     
     const unsubPedidosCamara = db.collection('camaraPedidos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('PedidosCamara');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('PedidosCamara');
         const pedidoMasReciente = obtenerDocumentoMasReciente(snapshot, 'fecha');
         snapshot.docChanges().forEach(change => {
             if (change.type === 'added' && ultimoPedidoConocido !== null && pedidoMasReciente && change.doc.id === pedidoMasReciente.id) {
@@ -405,7 +405,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubPedidosCamara);
     
     const unsubMovCamara = db.collection('camaraMovimientos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('MovCamara');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('MovCamara');
         movimientosCamara = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'camara') cargarHistorialCamara();
@@ -416,7 +416,7 @@ async function iniciarSincronizacionEnVivo() {
         ? db.collection('cierres')
         : db.collection('cierres').where('empleadoId', '==', empleadoActual.id);
     const unsubCierres = consultaCierres.onSnapshot(snapshot => {
-        marcarSnapshotInicial('Cierres');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Cierres');
         const cierreMasReciente = modoActual === 'admin' ? obtenerDocumentoMasReciente(snapshot, 'timestamp') : null;
         snapshot.docChanges().forEach(change => {
             if (modoActual === 'admin' && change.type === 'added' && ultimoCierreConocido !== null && cierreMasReciente && change.doc.id === cierreMasReciente.id) {
@@ -439,7 +439,7 @@ async function iniciarSincronizacionEnVivo() {
     
     if (modoActual === 'admin') {
         const unsubCajas = db.collection('cajas').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Cajas');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Cajas');
             cajas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'caja') cargarCaja();
@@ -451,14 +451,14 @@ async function iniciarSincronizacionEnVivo() {
     
     if (modoActual === 'admin') {
         const unsubGastos = db.collection('gastos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Gastos');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Gastos');
             gastos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'gastos') cargarGastos();
         });
         listenersEnVivo.push(unsubGastos);
         const unsubVentasSmartFran = db.collection('ventasSmartFran').onSnapshot(snapshot => {
-        marcarSnapshotInicial('VentasSmartFran');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('VentasSmartFran');
             ventasSmartFran = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'finanzas') cargarFinanzas();
@@ -470,7 +470,7 @@ async function iniciarSincronizacionEnVivo() {
     }
     
     const unsubAvisos = db.collection('avisos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Avisos');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Avisos');
         const avisoMasReciente = obtenerDocumentoMasReciente(snapshot, 'fechaCreacion');
         snapshot.docChanges().forEach(change => {
             if (change.type === 'added' && ultimoAvisoConocido !== null && avisoMasReciente && change.doc.id === avisoMasReciente.id) {
@@ -492,7 +492,7 @@ async function iniciarSincronizacionEnVivo() {
     
     if (modoActual === 'admin') {
         const unsubHistorial = db.collection('historialConteos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Historial');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Historial');
             historialConteos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'historial') cargarHistorial();
@@ -506,7 +506,7 @@ async function iniciarSincronizacionEnVivo() {
         ? db.collection('fichajes')
         : db.collection('fichajes').where('empleadoId', '==', empleadoActual.id);
     const unsubFichajes = consultaFichajes.onSnapshot(snapshot => {
-        marcarSnapshotInicial('Fichajes');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Fichajes');
         fichajes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'fichaje') cargarFichaje();
@@ -514,7 +514,7 @@ async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubFichajes);
     
     const unsubTurnos = db.collection('turnos').onSnapshot(snapshot => {
-        marcarSnapshotInicial('Turnos');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Turnos');
         turnos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'fichaje') cargarFichaje();
@@ -527,7 +527,7 @@ async function iniciarSincronizacionEnVivo() {
         ? db.collection('consumos')
         : db.collection('consumos').where('empleadoId', '==', empleadoActual.id);
     const unsubConsumos = consultaConsumos.onSnapshot(snapshot => {
-        marcarSnapshotInicial('Consumos');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('Consumos');
         consumos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'consumo') {
@@ -539,7 +539,7 @@ async function iniciarSincronizacionEnVivo() {
 
     if (modoActual === 'admin') {
         const unsubFondoCambio = db.collection('fondoCambioMovimientos').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
-        marcarSnapshotInicial('FondoCambio');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('FondoCambio');
             fondoCambioMovimientos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
@@ -550,7 +550,7 @@ async function iniciarSincronizacionEnVivo() {
     }
 
     const unsubSaldoFondoCambio = db.collection('config').doc('fondoCambio').onSnapshot(snapshot => {
-        marcarSnapshotInicial('SaldoFondoCambio');
+        if (!snapshot.metadata?.fromCache) marcarSnapshotInicial('SaldoFondoCambio');
         saldoFondoCambio = snapshot.exists ? Number(snapshot.data().saldo || 0) : 0;
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
