@@ -4962,35 +4962,26 @@ async function guardarPedido() {
 }
 
 // ========== HISTORIALES ==========
-async function cargarEstadoHistoriales() {
+function cargarEstadoHistoriales() {
     const contenedor = document.getElementById('estadoHistoriales');
     if (!contenedor) return;
     try {
-        const conteosSnap = await db.collection('historialConteos').get();
-        const movCamaraSnap = await db.collection('camaraMovimientos').get();
-        const pedidosCamaraSnap = await db.collection('camaraPedidos').get();
-        const cierresSnap = await db.collection('cierres').get();
-        const cajasSnap = await db.collection('cajas').get();
-        const gastosSnap = await db.collection('gastos').get();
-        const avisosSnap = await db.collection('avisos').get();
-        const fichajesSnap = await db.collection('fichajes').get();
-        const turnosSnap = await db.collection('turnos').get();
-        const consumosSnap = await db.collection('consumos').get();
-        const pedidosTraidos = pedidosCamaraSnap.docs.filter(d => d.data().traido).length;
-        const pedidosPendientes = pedidosCamaraSnap.docs.filter(d => !d.data().traido).length;
-        const avisosVencidos = avisosSnap.docs.filter(d => d.data().vencimiento && new Date(d.data().vencimiento) < new Date()).length;
+        // En administración estos datos ya están cargados y sincronizados por los listeners en vivo.
+        const pedidosTraidos = pedidosCamara.filter(p => p.traido).length;
+        const pedidosPendientes = pedidosCamara.filter(p => !p.traido).length;
+        const avisosVencidos = avisos.filter(a => a.vencimiento && new Date(a.vencimiento) < new Date()).length;
         contenedor.innerHTML = `
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin-bottom: 20px;">
-                <div class="list-item" style="margin: 0;"><h4>📦 Conteos</h4><p><strong>${conteosSnap.size}</strong> registros</p></div>
-                <div class="list-item" style="margin: 0;"><h4>🧊 Mov. cámara</h4><p><strong>${movCamaraSnap.size}</strong> registros</p></div>
+                <div class="list-item" style="margin: 0;"><h4>📦 Conteos</h4><p><strong>${historialConteos.length}</strong> registros</p></div>
+                <div class="list-item" style="margin: 0;"><h4>🧊 Mov. cámara</h4><p><strong>${movimientosCamara.length}</strong> registros</p></div>
                 <div class="list-item" style="margin: 0;"><h4>📋 Pedidos cámara</h4><p><strong>${pedidosPendientes}</strong> pend. | <strong>${pedidosTraidos}</strong> traídos</p></div>
-                <div class="list-item" style="margin: 0;"><h4>🧾 Cierres</h4><p><strong>${cierresSnap.size}</strong> registros</p></div>
-                <div class="list-item" style="margin: 0;"><h4>💰 Cajas</h4><p><strong>${cajasSnap.size}</strong> registros</p></div>
-                <div class="list-item" style="margin: 0;"><h4>💸 Gastos</h4><p><strong>${gastosSnap.size}</strong> registros</p></div>
-                <div class="list-item" style="margin: 0;"><h4>📢 Avisos</h4><p><strong>${avisosSnap.size}</strong> | <strong style="color: #ff4757;">${avisosVencidos}</strong> vencidos</p></div>
-                <div class="list-item" style="margin: 0;"><h4>🕐 Fichajes</h4><p><strong>${fichajesSnap.size}</strong> registros</p></div>
-                <div class="list-item" style="margin: 0;"><h4>⏰ Turnos</h4><p><strong>${turnosSnap.size}</strong> configurados</p></div>
-                <div class="list-item" style="margin: 0;"><h4>🎁 Consumos</h4><p><strong>${consumosSnap.size}</strong> registros</p></div>
+                <div class="list-item" style="margin: 0;"><h4>🧾 Cierres</h4><p><strong>${cierres.length}</strong> registros</p></div>
+                <div class="list-item" style="margin: 0;"><h4>💰 Cajas</h4><p><strong>${cajas.length}</strong> registros</p></div>
+                <div class="list-item" style="margin: 0;"><h4>💸 Gastos</h4><p><strong>${gastos.length}</strong> registros</p></div>
+                <div class="list-item" style="margin: 0;"><h4>📢 Avisos</h4><p><strong>${avisos.length}</strong> | <strong style="color: #ff4757;">${avisosVencidos}</strong> vencidos</p></div>
+                <div class="list-item" style="margin: 0;"><h4>🕐 Fichajes</h4><p><strong>${fichajes.length}</strong> registros</p></div>
+                <div class="list-item" style="margin: 0;"><h4>⏰ Turnos</h4><p><strong>${turnos.length}</strong> configurados</p></div>
+                <div class="list-item" style="margin: 0;"><h4>🎁 Consumos</h4><p><strong>${consumos.length}</strong> registros</p></div>
             </div>
         `;
     } catch (error) {
