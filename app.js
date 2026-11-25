@@ -603,11 +603,21 @@ let fotoConsumoBase64 = null; // 🎁 NUEVO
 let fondoCambioMovimientos = [];
 let saldoFondoCambio = 0;
 
-document.addEventListener('DOMContentLoaded', async function() {
-    await cargarDatosIniciales();
-    await verificarReinicioDiario();
-    actualizarFecha();
+async function cargarEmpleadosParaLogin() {
+    const snapshot = await db.collection('empleados').get();
+    empleados = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     cargarSelectEmpleados();
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+    // Antes del login solo se necesitan los empleados para completar el selector.
+    // El resto de los datos se carga una sola vez después de identificar el rol.
+    try {
+        await cargarEmpleadosParaLogin();
+    } catch (error) {
+        console.error('Error cargando empleados para el acceso:', error);
+    }
+    actualizarFecha();
     
     document.getElementById('filtroFinanzasPeriodo').addEventListener('change', function() {
         const inicio = document.getElementById('filtroFechaInicio');
@@ -815,6 +825,7 @@ async function ingresarAdmin() {
         modoActual = 'admin';
         empleadoActual = null;
         await cargarDatosIniciales();
+        await verificarReinicioDiario();
         mostrarApp();
     } else if (password === '') {
         alert('Ingresá la contraseña');
@@ -856,6 +867,7 @@ async function ingresarAdminPrueba() {
         modoActual = 'admin';
         empleadoActual = null;
         await cargarDatosIniciales();
+        await verificarReinicioDiario();
         mostrarApp();
     } else if (password === '') {
         alert('Ingresá la contraseña');
@@ -915,6 +927,7 @@ async function entrarEmpleado() {
     empleadoActual = empleado;
     modoActual = 'empleado';
     await cargarDatosIniciales();
+    await verificarReinicioDiario();
     mostrarApp();
 }
 
@@ -922,17 +935,23 @@ async function entrarPruebaEmpleado() {
     inicializarFirebase(firebaseConfigPruebas, true);
     modoActual = null;
     empleadoActual = null;
-    await cargarDatosIniciales();
-    cargarSelectEmpleados();
+    try {
+        await cargarEmpleadosParaLogin();
+    } catch (error) {
+        console.error('Error cargando empleados de prueba:', error);
+    }
     if (empleados.length > 0) {
         empleadoActual = empleados[0];
         modoActual = 'empleado';
         await cargarDatosIniciales();
+        await verificarReinicioDiario();
         mostrarApp();
     } else {
         alert('No hay empleados en el entorno de pruebas.');
         inicializarFirebase(firebaseConfigReal, false);
-        await cargarDatosIniciales();
+        modoActual = null;
+        empleadoActual = null;
+        await cargarEmpleadosParaLogin();
         volverAlLogin();
     }
 }
@@ -953,8 +972,7 @@ async function salir() {
         inicializarFirebase(firebaseConfigReal, false);
         modoActual = null;
         empleadoActual = null;
-        await cargarDatosIniciales();
-        cargarSelectEmpleados();
+        await cargarEmpleadosParaLogin();
     }
     document.getElementById('pantallaLogin').style.display = 'flex';
     document.getElementById('appPrincipal').style.display = 'none';
