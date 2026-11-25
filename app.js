@@ -23,6 +23,19 @@ let modoPrueba = false;
 let db;
 let listenersActivos = [];
 let listenersEnVivo = [];
+let resolverCargaInicialListeners = null;
+let snapshotsInicialesRecibidos = new Set();
+let cantidadSnapshotsInicialesEsperados = 0;
+
+function marcarSnapshotInicial(id) {
+    if (!resolverCargaInicialListeners || snapshotsInicialesRecibidos.has(id)) return;
+    snapshotsInicialesRecibidos.add(id);
+    if (snapshotsInicialesRecibidos.size >= cantidadSnapshotsInicialesEsperados) {
+        const resolver = resolverCargaInicialListeners;
+        resolverCargaInicialListeners = null;
+        resolver();
+    }
+}
 let resumenesHistoricos = [];
 let resumenesHistoricosCargados = false;
 let actualizandoResumenesHistoricos = false;
@@ -248,11 +261,17 @@ function obtenerDocumentoMasReciente(snapshot, campo) {
 }
 
 // ========== SINCRONIZACIÓN EN VIVO ==========
-function iniciarSincronizacionEnVivo() {
+async function iniciarSincronizacionEnVivo() {
     listenersEnVivo.forEach(unsub => { try { unsub(); } catch(e) {} });
     listenersEnVivo = [];
+    snapshotsInicialesRecibidos = new Set();
+    cantidadSnapshotsInicialesEsperados = modoActual === 'admin' ? 23 : 18;
+    const esperaSnapshotsIniciales = new Promise(resolve => {
+        resolverCargaInicialListeners = resolve;
+    });
     
     const unsubProductos = db.collection('productos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Productos');
         productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva) {
@@ -267,6 +286,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubProductos);
     
     const unsubStock = db.collection('config').doc('stock').onSnapshot(doc => {
+        marcarSnapshotInicial('Stock');
         stock = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && (tabActiva.id === 'dashboard' || tabActiva.id === 'conteo' || tabActiva.id === 'camara' || tabActiva.id === 'gestion' || tabActiva.id === 'reposicion')) {
@@ -280,6 +300,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubStock);
     
     const unsubReferenciasReposicion = db.collection('config').doc('referenciasReposicion').onSnapshot(doc => {
+        marcarSnapshotInicial('ReferenciasReposicion');
         referenciasReposicion = doc.exists ? (doc.data().data || {}) : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'reposicion') cargarReposicion();
@@ -287,6 +308,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubReferenciasReposicion);
 
     const unsubStockCamara = db.collection('config').doc('stockCamara').onSnapshot(doc => {
+        marcarSnapshotInicial('StockCamara');
         stockCamara = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'camara') cargarStockCamara();
@@ -294,6 +316,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubStockCamara);
 
     const unsubNotasConteo = db.collection('config').doc('notasConteo').onSnapshot(doc => {
+        marcarSnapshotInicial('NotasConteo');
         notasConteo = doc.exists ? (doc.data().data || {}) : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'conteo') cargarConteo();
@@ -301,6 +324,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubNotasConteo);
 
     const unsubNotasPedidos = db.collection('config').doc('notasPedidos').onSnapshot(doc => {
+        marcarSnapshotInicial('NotasPedidos');
         notasPedidos = doc.exists ? (doc.data().data || {}) : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'gestion' && document.getElementById('formularioPedido')?.style.display !== 'none') renderProductosPedido();
@@ -308,6 +332,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubNotasPedidos);
     
     const unsubTareas = db.collection('tareas').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Tareas');
         tareas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'tareas') cargarTareas();
@@ -316,6 +341,7 @@ function iniciarSincronizacionEnVivo() {
     
     // 🔧 🔑 🔑 🔑 LISTENER CORREGIDO: tareasCompletadas 🔑 🔑 🔑
     const unsubTareasComp = db.collection('config').doc('tareasCompletadas').onSnapshot(doc => {
+        marcarSnapshotInicial('TareasComp');
         tareasCompletadas = doc.exists ? doc.data().data : {};
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'tareas') {
@@ -344,12 +370,14 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubTareasComp);
     
     const unsubEmpleados = db.collection('empleados').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Empleados');
         empleados = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         cargarSelectEmpleados();
     });
     listenersEnVivo.push(unsubEmpleados);
     
     const unsubEventos = db.collection('eventos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Eventos');
         eventos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'calendario') cargarCalendario();
@@ -357,6 +385,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubEventos);
     
     const unsubPedidosCamara = db.collection('camaraPedidos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('PedidosCamara');
         const pedidoMasReciente = obtenerDocumentoMasReciente(snapshot, 'fecha');
         snapshot.docChanges().forEach(change => {
             if (change.type === 'added' && ultimoPedidoConocido !== null && pedidoMasReciente && change.doc.id === pedidoMasReciente.id) {
@@ -376,6 +405,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubPedidosCamara);
     
     const unsubMovCamara = db.collection('camaraMovimientos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('MovCamara');
         movimientosCamara = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'camara') cargarHistorialCamara();
@@ -386,6 +416,7 @@ function iniciarSincronizacionEnVivo() {
         ? db.collection('cierres')
         : db.collection('cierres').where('empleadoId', '==', empleadoActual.id);
     const unsubCierres = consultaCierres.onSnapshot(snapshot => {
+        marcarSnapshotInicial('Cierres');
         const cierreMasReciente = modoActual === 'admin' ? obtenerDocumentoMasReciente(snapshot, 'timestamp') : null;
         snapshot.docChanges().forEach(change => {
             if (modoActual === 'admin' && change.type === 'added' && ultimoCierreConocido !== null && cierreMasReciente && change.doc.id === cierreMasReciente.id) {
@@ -408,6 +439,7 @@ function iniciarSincronizacionEnVivo() {
     
     if (modoActual === 'admin') {
         const unsubCajas = db.collection('cajas').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Cajas');
             cajas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'caja') cargarCaja();
@@ -419,12 +451,14 @@ function iniciarSincronizacionEnVivo() {
     
     if (modoActual === 'admin') {
         const unsubGastos = db.collection('gastos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Gastos');
             gastos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'gastos') cargarGastos();
         });
         listenersEnVivo.push(unsubGastos);
         const unsubVentasSmartFran = db.collection('ventasSmartFran').onSnapshot(snapshot => {
+        marcarSnapshotInicial('VentasSmartFran');
             ventasSmartFran = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'finanzas') cargarFinanzas();
@@ -436,6 +470,7 @@ function iniciarSincronizacionEnVivo() {
     }
     
     const unsubAvisos = db.collection('avisos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Avisos');
         const avisoMasReciente = obtenerDocumentoMasReciente(snapshot, 'fechaCreacion');
         snapshot.docChanges().forEach(change => {
             if (change.type === 'added' && ultimoAvisoConocido !== null && avisoMasReciente && change.doc.id === avisoMasReciente.id) {
@@ -457,6 +492,7 @@ function iniciarSincronizacionEnVivo() {
     
     if (modoActual === 'admin') {
         const unsubHistorial = db.collection('historialConteos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Historial');
             historialConteos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'historial') cargarHistorial();
@@ -470,6 +506,7 @@ function iniciarSincronizacionEnVivo() {
         ? db.collection('fichajes')
         : db.collection('fichajes').where('empleadoId', '==', empleadoActual.id);
     const unsubFichajes = consultaFichajes.onSnapshot(snapshot => {
+        marcarSnapshotInicial('Fichajes');
         fichajes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'fichaje') cargarFichaje();
@@ -477,6 +514,7 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubFichajes);
     
     const unsubTurnos = db.collection('turnos').onSnapshot(snapshot => {
+        marcarSnapshotInicial('Turnos');
         turnos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'fichaje') cargarFichaje();
@@ -489,6 +527,7 @@ function iniciarSincronizacionEnVivo() {
         ? db.collection('consumos')
         : db.collection('consumos').where('empleadoId', '==', empleadoActual.id);
     const unsubConsumos = consultaConsumos.onSnapshot(snapshot => {
+        marcarSnapshotInicial('Consumos');
         consumos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'consumo') {
@@ -500,6 +539,7 @@ function iniciarSincronizacionEnVivo() {
 
     if (modoActual === 'admin') {
         const unsubFondoCambio = db.collection('fondoCambioMovimientos').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+        marcarSnapshotInicial('FondoCambio');
             fondoCambioMovimientos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const tabActiva = document.querySelector('.tab-content.active');
             if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
@@ -510,12 +550,20 @@ function iniciarSincronizacionEnVivo() {
     }
 
     const unsubSaldoFondoCambio = db.collection('config').doc('fondoCambio').onSnapshot(snapshot => {
+        marcarSnapshotInicial('SaldoFondoCambio');
         saldoFondoCambio = snapshot.exists ? Number(snapshot.data().saldo || 0) : 0;
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'fondoCambio') cargarFondoCambio();
     });
     listenersEnVivo.push(unsubSaldoFondoCambio);
     
+    let timeoutInicial;
+    await Promise.race([
+        esperaSnapshotsIniciales,
+        new Promise(resolve => { timeoutInicial = setTimeout(resolve, 10000); })
+    ]);
+    clearTimeout(timeoutInicial);
+    resolverCargaInicialListeners = null;
     console.log('✅ Sincronización en vivo activada');
 }
 
@@ -847,7 +895,7 @@ async function ingresarAdmin() {
         document.getElementById('inputPasswordAdmin').value = '';
         modoActual = 'admin';
         empleadoActual = null;
-        await cargarDatosIniciales();
+        await iniciarSincronizacionEnVivo();
         await verificarReinicioDiario();
         mostrarApp();
     } else if (password === '') {
@@ -889,7 +937,7 @@ async function ingresarAdminPrueba() {
         inicializarFirebase(firebaseConfigPruebas, true);
         modoActual = 'admin';
         empleadoActual = null;
-        await cargarDatosIniciales();
+        await iniciarSincronizacionEnVivo();
         await verificarReinicioDiario();
         mostrarApp();
     } else if (password === '') {
@@ -949,7 +997,7 @@ async function entrarEmpleado() {
 
     empleadoActual = empleado;
     modoActual = 'empleado';
-    await cargarDatosIniciales();
+    await iniciarSincronizacionEnVivo();
     await verificarReinicioDiario();
     mostrarApp();
 }
@@ -1057,7 +1105,6 @@ function mostrarApp() {
     actualizarEstadoBotonNotif();
     // Si FCM ya generó el token antes del ingreso, asociarlo ahora al usuario.
     if (window.fcmToken) guardarTokenFCM(window.fcmToken);
-    iniciarSincronizacionEnVivo();
     if (notificacionesActivas && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
     cargarTareas(); cargarCalendario(); cargarAvisos();
     cargarCamara(); cargarCierre(); cargarConteo();
