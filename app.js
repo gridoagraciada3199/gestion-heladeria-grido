@@ -398,7 +398,10 @@ function iniciarSincronizacionEnVivo() {
     });
     listenersEnVivo.push(unsubMovCamara);
     
-    const unsubCierres = db.collection('cierres').onSnapshot(snapshot => {
+    const consultaCierres = modoActual === 'admin'
+        ? db.collection('cierres')
+        : db.collection('cierres').where('empleadoId', '==', empleadoActual.id);
+    const unsubCierres = consultaCierres.onSnapshot(snapshot => {
         cierres = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva) {
@@ -408,25 +411,34 @@ function iniciarSincronizacionEnVivo() {
     });
     listenersEnVivo.push(unsubCierres);
     
-    const unsubCajas = db.collection('cajas').onSnapshot(snapshot => {
-        cajas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const tabActiva = document.querySelector('.tab-content.active');
-        if (tabActiva && tabActiva.id === 'caja') cargarCaja();
-    });
-    listenersEnVivo.push(unsubCajas);
+    if (modoActual === 'admin') {
+        const unsubCajas = db.collection('cajas').onSnapshot(snapshot => {
+            cajas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const tabActiva = document.querySelector('.tab-content.active');
+            if (tabActiva && tabActiva.id === 'caja') cargarCaja();
+        });
+        listenersEnVivo.push(unsubCajas);
+    } else {
+        cajas = [];
+    }
     
-    const unsubGastos = db.collection('gastos').onSnapshot(snapshot => {
-        gastos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const tabActiva = document.querySelector('.tab-content.active');
-        if (tabActiva && tabActiva.id === 'gastos') cargarGastos();
-    });
-    listenersEnVivo.push(unsubGastos);
-    const unsubVentasSmartFran = db.collection('ventasSmartFran').onSnapshot(snapshot => {
-        ventasSmartFran = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const tabActiva = document.querySelector('.tab-content.active');
-        if (tabActiva && tabActiva.id === 'finanzas') cargarFinanzas();
-    });
-    listenersEnVivo.push(unsubVentasSmartFran);
+    if (modoActual === 'admin') {
+        const unsubGastos = db.collection('gastos').onSnapshot(snapshot => {
+            gastos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const tabActiva = document.querySelector('.tab-content.active');
+            if (tabActiva && tabActiva.id === 'gastos') cargarGastos();
+        });
+        listenersEnVivo.push(unsubGastos);
+        const unsubVentasSmartFran = db.collection('ventasSmartFran').onSnapshot(snapshot => {
+            ventasSmartFran = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const tabActiva = document.querySelector('.tab-content.active');
+            if (tabActiva && tabActiva.id === 'finanzas') cargarFinanzas();
+        });
+        listenersEnVivo.push(unsubVentasSmartFran);
+    } else {
+        gastos = [];
+        ventasSmartFran = [];
+    }
     
     const unsubAvisos = db.collection('avisos').onSnapshot(snapshot => {
         avisos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -436,14 +448,21 @@ function iniciarSincronizacionEnVivo() {
     });
     listenersEnVivo.push(unsubAvisos);
     
-    const unsubHistorial = db.collection('historialConteos').onSnapshot(snapshot => {
-        historialConteos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const tabActiva = document.querySelector('.tab-content.active');
-        if (tabActiva && tabActiva.id === 'historial') cargarHistorial();
-    });
-    listenersEnVivo.push(unsubHistorial);
+    if (modoActual === 'admin') {
+        const unsubHistorial = db.collection('historialConteos').onSnapshot(snapshot => {
+            historialConteos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const tabActiva = document.querySelector('.tab-content.active');
+            if (tabActiva && tabActiva.id === 'historial') cargarHistorial();
+        });
+        listenersEnVivo.push(unsubHistorial);
+    } else {
+        historialConteos = [];
+    }
     
-    const unsubFichajes = db.collection('fichajes').onSnapshot(snapshot => {
+    const consultaFichajes = modoActual === 'admin'
+        ? db.collection('fichajes')
+        : db.collection('fichajes').where('empleadoId', '==', empleadoActual.id);
+    const unsubFichajes = consultaFichajes.onSnapshot(snapshot => {
         fichajes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'fichaje') cargarFichaje();
@@ -459,7 +478,10 @@ function iniciarSincronizacionEnVivo() {
     listenersEnVivo.push(unsubTurnos);
     
     // 🎁 NUEVO: listener de consumos
-    const unsubConsumos = db.collection('consumos').onSnapshot(snapshot => {
+    const consultaConsumos = modoActual === 'admin'
+        ? db.collection('consumos')
+        : db.collection('consumos').where('empleadoId', '==', empleadoActual.id);
+    const unsubConsumos = consultaConsumos.onSnapshot(snapshot => {
         consumos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const tabActiva = document.querySelector('.tab-content.active');
         if (tabActiva && tabActiva.id === 'consumo') {
